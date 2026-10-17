@@ -25,6 +25,18 @@ declare module 'claude-code' {
        * and stretch key; null while none show.
        */
       lettering: { action: 'open' | 'close'; targets: { letter: string; member: string; key: string }[] } | null
+      /** The style the toolbar is trying (marks, highlight), drawn in place of the saved one until saved; null for none. */
+      look: { marks: string[]; highlight: string } | null
+      /** Whether /cc-stretch:style has the toolbar open. */
+      toolbar: boolean
+      /** Which action holds the toolbar's one-at-a-time claim, a save or a close; null while none does. */
+      busy: 'save' | 'close' | null
+      /**
+       * Each streaming message's filter state (open stretches, code fence and code span) as its last
+       * flush left it, by message id, until its final flush, or until another message begins while
+       * none of its flushes is pending; null for a message left as written.
+       */
+      streams: Record<string, { open: { isLong: boolean }[]; fence: string | undefined; span: string | undefined } | null>
     }
   }
 }

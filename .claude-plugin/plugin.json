@@ -2,5 +2,19 @@
   "name": "cc-stretch",
   "version": "0.4.0",
   "description": "Stretchtext replies for Claude Code: short by default, each phrase grows in place when you click it",
-  "types": "./types/index.d.ts"
+  "types": "./types/index.d.ts",
+  "userConfig": {
+    "marks": {
+      "type": "string",
+      "title": "Closed stretch marks",
+      "description": "Marks on a phrase you can open, as a list of bold, italic, underline, strikethrough, dim. Empty keeps the underline; none takes every mark away. Under a highlight, dim is not drawn.",
+      "default": ""
+    },
+    "highlight": {
+      "type": "string",
+      "title": "Closed stretch highlight",
+      "description": "Background of a phrase you can open, as a hex colour such as #264f78, in any case. Its text turns near black or near white, whichever reads better. Empty for none.",
+      "default": ""
+    }
+  }
 }

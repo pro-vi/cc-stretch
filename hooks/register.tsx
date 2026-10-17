@@ -1,11 +1,14 @@
 import { atom, memberOf, read, update } from 'claude-code'
-import type { EngineInterface, Register, RenderInput, SessionMessage } from 'claude-code'
+import type { ClassicEventOf, ClassicResultOf, EngineInterface, Register, RenderInput, RenderNode, SessionMessage } from 'claude-code'
 
 import { GUIDE } from './guide'
 import { closeAfter, codeSpan, hideLongForms, isLinkable, isOpenable, KEY_SEPARATOR, newStreamState, paragraphsOf, parentOf, parse, stretches } from './parse'
 import type { Segment, StreamState, Stretch } from './parse'
 import { targetsIn } from './layout'
 import type { Action } from './layout'
+import { contrastOn } from './contrast'
+import { isSameLook, lookOf, MARK_NAMES, marksSetting, storedLook } from './look'
+import type { Look, Mark } from './look'
 import type { ReplyPost, ReplyProps, Tint } from './reply'
 
 const openStretches = atom({ plugin: 'cc-stretch', key: 'open' } as const, [])
@@ -14,12 +17,24 @@ const stretchOrder = atom({ plugin: 'cc-stretch', key: 'order' } as const, { ord
 const newestReply = atom({ plugin: 'cc-stretch', key: 'newest' } as const, '')
 const askedStretch = atom({ plugin: 'cc-stretch', key: 'ask' } as const, null)
 const lettering = atom({ plugin: 'cc-stretch', key: 'lettering' } as const, null)
+const pickedLook = atom({ plugin: 'cc-stretch', key: 'look' } as const, null)
+const toolbarShown = atom({ plugin: 'cc-stretch', key: 'toolbar' } as const, false)
+/** Plugin state, not module state: as of Claude Code 2.1.302 each setting written reloads the plugin, and a save outlives the reload. */
+const toolbarHolder = atom({ plugin: 'cc-stretch', key: 'busy' } as const, null)
+/** Plugin state for the same reason: a save can land while a reply streams, and its next flush continues from here. */
+const streamCheckpoints = atom({ plugin: 'cc-stretch', key: 'streams' } as const, {})
+
+// The highlights the toolbar offers: deep colours, whose text turns light. A light highlight would draw
+// dark text on a light ground, as a selection does. No text colour is offered: links, code and the
+// words a click added already speak in colour.
+const HIGHLIGHTS = ['#264f78', '#1f3a5f', '#3b4261', '#4b3b6b', '#5c2a4a', '#5f2a2a', '#5c4a00', '#1e4d2b', '#1d4b4b']
 
 // Claude Code 2.1.300 can start a session on the main screen even with fullscreen set, and the
 // variable overrides that.
+const FULLSCREEN_HOW = 'run /tui fullscreen. If it says fullscreen is already on, start Claude Code with CLAUDE_CODE_NO_FLICKER=1, which forces fullscreen.'
 const MAIN_SCREEN_NOTE =
   "cc-stretch: stretches are open because this session is on Claude Code's main screen, where a printed reply cannot change. " +
-  'For clickable stretches, run /tui fullscreen. If it says fullscreen is already on, start Claude Code with CLAUDE_CODE_NO_FLICKER=1, which forces fullscreen.'
+  `For clickable stretches, ${FULLSCREEN_HOW}`
 
 // The words a stretch adds are drawn in Claude Code's own theme colours (its 2.1.300 values for
 // warning, autoAccept, planMode and claude), mixed 45% toward the text colour so they tint rather
@@ -42,12 +57,11 @@ const HUES = BASE.dark.length
 // so it points at a reserved name that resolves nowhere.
 const HREF = 'https://cc-stretch.invalid/'
 
-/** A streaming reply's filter state, with what it held and what it was shown as so far. */
-type Stream = { state: StreamState; raw: string; shown: string }
-/** How many filtered replies are kept by what they were shown as. */
-const KEPT_REPLIES = 200
-/** How many of the session's latest replies with a stretch are searched for one not kept. */
-const SEARCHED_REPLIES = 50
+/**
+ * A streaming reply's filter state, with what it held and what it was shown as so far; `isWhole` is
+ * false for one first seen midway, after the plugin loaded again, whose text so far is not all of it.
+ */
+type Stream = { state: StreamState; raw: string; shown: string; isWhole: boolean }
 
 /** The letters, in row order: home, top, bottom. */
 const LETTERS = 'asdfghjklqwertyuiopzxcvbnm'
@@ -74,12 +88,15 @@ const keyOf = (text: string) => text.replace(/\s+/g, '')
 
 // Claude Code 2.1.299 and 2.1.300 hand the AssistantMessage site the reply as the streaming filter
 // left it, with its long forms gone. Each filtered reply is kept by what it was shown as, so the
-// site can draw it from its markup again; null for one that held no stretch. A reply filtered
-// before the plugin last loaded is found among the session's messages instead.
+// site can draw it from its markup again; null for one that held no stretch. Replies it could not
+// keep, from before the plugin last loaded or whose final flush it did not see whole, are read from the
+// session's messages when a draw first finds one missing.
 const unfiltered = new Map<string, string | null>()
+/** The read of the session's replies into `unfiltered`: undefined until a draw needs it, after a read that failed, and after a reply not kept has finished. */
+let sessionKept: Promise<void> | undefined
 
-function remember({ raw, shown }: Stream): void {
-  setNewest(unfiltered, keyOf(shown), raw === shown ? null : raw, KEPT_REPLIES)
+function remember(raw: string, shown: string): void {
+  unfiltered.set(keyOf(shown), raw === shown ? null : raw)
 }
 
 /** Sets `key` in `map` as its newest entry, dropping the oldest past `size`. */
@@ -95,44 +112,216 @@ function setNewest<V>(map: Map<string, V>, key: string, value: V, size: number):
 /** The text a reply was written with, markup and all, when `text` is how the filter showed it. */
 async function rawOf($: EngineInterface, text: string): Promise<string | undefined> {
   const key = keyOf(text)
-  const kept = unfiltered.get(key)
-  if (kept !== undefined) return kept ?? undefined
-  const messages = await $.session.messages().catch(() => [])
-  const replies = messages.filter(message => message.role === 'assistant' && message.text.includes('{{')).slice(-SEARCHED_REPLIES)
-  return replies.find(message => keyOf(hideLongForms(message.text, newStreamState())) === key)?.text
+  if (!unfiltered.has(key)) await (sessionKept ??= keepSession($))
+  return unfiltered.get(key) ?? undefined
 }
 
-export const register: Register = on => {
-  // While a reply streams, Claude Code draws its lines as they arrive, before the reply reaches
-  // the AssistantMessage site below. Showing each stretch as its short form there too keeps the
-  // raw markup from flashing past. One filter state per message, until its final flush; null for a
-  // message left as written.
-  const streams = new Map<string, Stream | null>()
-  on('classic.MessageDisplay', async ($, e, next) => {
-    const answer = await next(e)
+/** Keeps every reply of the session by what the streaming filter shows of it. */
+async function keepSession($: EngineInterface): Promise<void> {
+  const messages = await $.session.messages().catch(() => undefined)
+  if (messages === undefined) {
+    sessionKept = undefined
+    return
+  }
+  for (const message of messages) if (message.role === 'assistant') remember(message.text, hideLongForms(message.text, newStreamState()))
+}
+
+/** One filter state per streaming message, until its final flush, or until another begins while none of its flushes is pending; null for a message left as written. */
+const streams = new Map<string, Stream | null>()
+/** Each streaming message's latest flush, which its next one waits for. */
+const flushes = new Map<string, Promise<void>>()
+
+type Flush = ClassicEventOf['classic.MessageDisplay']
+type Shown = ClassicResultOf['classic.MessageDisplay']
+/** A streaming reply's flush with each stretch shown as its short form. */
+async function display($: EngineInterface, e: Flush, answer: Shown): Promise<Shown> {
+  let stream = streams.get(e.message_id)
+  if (stream === undefined) {
+    // As of Claude Code 2.1.302 a message that begins abandons any not finished, which then gets no
+    // final flush; a finished one may still have flushes on their way.
+    if (e.index === 0) for (const id of streams.keys()) if (!flushes.has(id)) streams.delete(id)
+    // Seen midway: the plugin loaded again while it streamed, and its last flush left its state.
+    const left = e.index === 0 ? undefined : (await read($, streamCheckpoints))[e.message_id]
     // The desktop app draws a finished reply from this display text, so hiding the long forms here
     // would strip the markup its links are made from. Decided on a message's first flush, so a
     // surface that attaches or leaves midway cannot half-filter it.
-    let stream = streams.get(e.message_id)
-    if (stream === undefined) stream = (await $.session.surfaces()).includes('desktop') ? null : { state: newStreamState(), raw: '', shown: '' }
-    if (stream === null) {
-      if (e.final) streams.delete(e.message_id)
-      else streams.set(e.message_id, stream)
-      return answer
-    }
+    if (left !== undefined) stream = left && { state: left, raw: '', shown: '', isWhole: false }
+    else stream = (await $.session.surfaces()).includes('desktop') ? null : { state: newStreamState(), raw: '', shown: '', isWhole: e.index === 0 }
+    streams.set(e.message_id, stream)
+  }
 
+  let displayContent = answer.displayContent
+  if (stream !== null) {
     const delta = answer.displayContent ?? e.delta
-    const displayContent = hideLongForms(delta, stream.state)
+    displayContent = hideLongForms(delta, stream.state)
     stream.raw += delta
     stream.shown += displayContent
-    if (e.final) {
-      streams.delete(e.message_id)
-      remember(stream)
-    } else {
-      streams.set(e.message_id, stream)
-    }
+  }
+  if (e.final) {
+    streams.delete(e.message_id)
+    // A reply seen only in part is read from the session's messages when it is drawn.
+    if (stream?.isWhole) remember(stream.raw, stream.shown)
+    else if (stream !== null) sessionKept = undefined
+  }
+  await update($, streamCheckpoints, () => Object.fromEntries([...streams].map(([id, kept]) => [id, kept && kept.state])))
+  return stream === null ? answer : { ...answer, displayContent }
+}
 
-    return { ...answer, displayContent }
+/**
+ * Writes the style being tried into the plugin's settings, the ones that differ from `saved`, then
+ * drops the try unless a press since made it differ again. A refusal keeps the try and says what was
+ * and was not saved. As of Claude Code 2.1.302 the settings land in the person's user settings, keyed
+ * `<plugin>.<field>`, and each write reloads the plugin with them.
+ */
+function saveLook($: EngineInterface, saved: Look): Promise<void> {
+  return withClaim($, 'save', async () => {
+    // Read when pressed: a mark pressed after the toolbar was last drawn is part of what is saved.
+    const tried = storedLook(await read($, pickedLook))
+    if (tried === null) return
+    const fields: [string, string, string][] = [
+      ['marks', marksSetting(tried.marks), marksSetting(saved.marks)],
+      ['highlight', tried.highlight, saved.highlight],
+    ]
+    const written: string[] = []
+    for (const [field, value] of fields.filter(([, value, before]) => value !== before)) {
+      const result = await $.config.set({ key: `cc-stretch.${field}`, value }).catch((error: unknown) => ({ deny: error instanceof Error ? error.message : String(error) }))
+      if (result.deny !== undefined) {
+        $.ui.toast(written.length === 0 ? `cc-stretch: the style was not saved: ${result.deny}` : `cc-stretch: ${written.join(' and ')} saved, ${field} not saved: ${result.deny}`)
+        return
+      }
+      written.push(field)
+    }
+    await update($, pickedLook, stored => (isSameLook(storedLook(stored) ?? saved, tried) ? null : stored))
+  })
+}
+
+/** Drops the try, unless a save or a close holds the claim: a reset drawn before it began does nothing then. */
+async function resetTry($: EngineInterface): Promise<void> {
+  if ((await read($, toolbarHolder)) === null) await update($, pickedLook, () => null)
+}
+
+/**
+ * Puts the toolbar away; a try not saved goes with it, and the reader is told so. It takes the same
+ * claim as a save, so a close and a save pressed together never both act on the try.
+ */
+function closeToolbar($: EngineInterface, saved: Look): Promise<void> {
+  return withClaim($, 'close', async () => {
+    const [stored] = await Promise.all([read($, pickedLook), update($, toolbarShown, () => false)])
+    await update($, pickedLook, () => null)
+    const tried = storedLook(stored)
+    if (tried !== null && !isSameLook(tried, saved)) $.ui.toast('cc-stretch: the style you tried was not saved')
+  })
+}
+
+/**
+ * Runs a save or a close under the toolbar's one-at-a-time claim, taken before it reads the try and
+ * released after, so a second press, or one from a toolbar drawn before the first began, finds the
+ * claim held and does nothing.
+ */
+async function withClaim($: EngineInterface, holder: 'save' | 'close', run: () => Promise<void>): Promise<void> {
+  const taken = { isMine: false }
+  await update($, toolbarHolder, held => {
+    taken.isMine = held === null
+    return taken.isMine ? holder : held
+  })
+  if (!taken.isMine) return
+  try {
+    await run()
+  } finally {
+    await update($, toolbarHolder, () => null)
+  }
+}
+
+export const register: Register = (on, options) => {
+  const baseLook = lookOf(options)
+  // As of Claude Code 2.1.302, /cc-stretch:style is listed from commands/style.md and answered here;
+  // Claude reads the file only when the hooks did not answer. It only shows the toolbar: the band
+  // above the prompt has its own [-], which collapses it without the plugin knowing, so a toggle could
+  // hide a toolbar the reader no longer sees.
+  on('command.run', { command: 'cc-stretch:style' }, async ($, e) => {
+    if (!(await $.session.surfaces()).includes('terminal')) return { text: 'The style toolbar is drawn in the terminal, above the prompt; with no terminal attached there is none.' }
+    if (!e.presentation.isFullscreen) return { text: `The style toolbar is drawn in fullscreen; on the main screen every stretch is drawn open. To use it, ${FULLSCREEN_HOW}` }
+    await update($, toolbarShown, () => true)
+    return { text: 'Style toolbar shown above the prompt; close puts it away.' }
+  })
+
+  on('ui.render', { component: 'AbovePrompt' }, async ($, e, next) => {
+    // Terminal only: as of Claude Code 2.1.302 the desktop app draws each Button natively, where a highlight swatch has no label.
+    if (e.surface !== 'terminal' || e.props.hasSurvey || !(await read($, toolbarShown))) return next(e)
+    const [stored, holder] = await Promise.all([read($, pickedLook), read($, toolbarHolder)])
+    const tried = storedLook(stored)
+    const look = tried ?? baseLook
+    // Only a try that differs from the saved style leaves anything to reset or save.
+    const isTrying = tried !== null && !isSameLook(tried, baseLook)
+    // Each press starts from the look as it is now, not as this draw saw it, so quick presses add up.
+    const change = (edit: (now: Look) => Partial<Look>) =>
+      update($, pickedLook, stored => {
+        const now = storedLook(stored) ?? baseLook
+        return { ...now, ...edit(now) }
+      })
+    const toggle = (mark: Mark) => change(now => ({ marks: now.marks.includes(mark) ? now.marks.filter(m => m !== mark) : [...now.marks, mark] }))
+    const { Box, Button, Text } = $.ui.resolve(e)
+    const chosen = (isOn: boolean, label: string) => (isOn ? <Text bold>[{label}]</Text> : <Text>{label}</Text>)
+    // While a save or a close holds the claim nothing is pressable: a press then would race it.
+    const pressable = (key: string, onPress: () => unknown, label: RenderNode) =>
+      holder !== null ? <Text key={key}>{label}</Text> : <Button plain key={key} onPress={onPress}>{label}</Button>
+    const swatch = (c: string) =>
+      pressable(`highlight-${c}`, () => change(() => ({ highlight: c })), <Text backgroundColor={c} {...contrastOn(c)}>{look.highlight === c ? '◆◆' : '  '}</Text>)
+    const row = (label: string, parts: RenderNode[]) => (
+      <Box key={`row-${label}`} flexWrap="wrap" columnGap={1}>
+        <Text dimColor>{label.padEnd(9)}</Text>
+        {parts}
+      </Box>
+    )
+    return (
+      <Box flexDirection="column">
+        {row('marks', [
+          ...MARK_NAMES.map(mark => pressable(`mark-${mark}`, () => toggle(mark), chosen(look.marks.includes(mark), mark))),
+          // A close holds the claim only while the toolbar goes away, so it shows no word.
+          ...(holder !== null
+            ? holder === 'save' ? [<Text key="saving" dimColor>saving</Text>] : []
+            : [
+                ...(isTrying
+                  ? [
+                      <Button plain key="reset" onPress={() => resetTry($)}>reset</Button>,
+                      <Button plain key="save" onPress={() => saveLook($, baseLook)}>save</Button>,
+                    ]
+                  : []),
+                <Button plain key="close" onPress={() => closeToolbar($, baseLook)}>close</Button>,
+              ]),
+        ])}
+        {row('highlight', [
+          pressable('highlight-none', () => change(() => ({ highlight: '' })), chosen(look.highlight === '', 'no highlight')),
+          ...HIGHLIGHTS.map(swatch),
+        ])}
+      </Box>
+    )
+  })
+
+  // While a reply streams, Claude Code draws its lines as they arrive, before the reply reaches
+  // the AssistantMessage site below. Showing each stretch as its short form there too keeps the
+  // raw markup from flashing past. As of Claude Code 2.1.302 up to three flushes of a message run at
+  // once and the final one does not wait, so each flush filters after the one before it.
+  on('classic.MessageDisplay', ($, e, next) => {
+    const before = flushes.get(e.message_id)
+    const flush = (async () => {
+      try {
+        const answer = await next(e)
+        await before
+        return await display($, e, answer)
+      } catch (error) {
+        // A reply whose final flush failed is not kept, so the session is read again when it is drawn.
+        if (e.final) sessionKept = undefined
+        throw error
+      }
+    })()
+    const settled = flush.then(
+      () => undefined,
+      () => undefined,
+    )
+    flushes.set(e.message_id, settled)
+    void settled.then(() => flushes.get(e.message_id) === settled && flushes.delete(e.message_id))
+    return flush
   })
 
   on('prompt.compose', async ($, e, next) => {
@@ -223,11 +412,13 @@ export const register: Register = on => {
       // A paragraph holding a stretch is drawn by a Client, on the screen's side; the rest is
       // Claude Code's own markdown.
       const { Box, Button, Client, Markdown, Text } = $.ui.resolve(e)
-      const [{ order, count }, newest, shown] = await Promise.all([
+      const [{ order, count }, newest, shown, picked] = await Promise.all([
         read($, memberOf(stretchOrder, { requestId: e.requestId })),
         read($, newestReply),
         read($, lettering),
+        read($, pickedLook),
       ])
+      const look = storedLook(picked) ?? baseLook
       // The theme matters only once a stretch in this reply is open and so tinted.
       const isLight =
         Object.keys(order).length > 0 &&
@@ -242,7 +433,7 @@ export const register: Register = on => {
           const [open, ask] = await Promise.all([read($, memberOf(openStretches, { requestId: member })), read($, memberOf(askedStretch, { requestId: member }))])
           const tints = tintsOf(order, key, newest === e.requestId ? count - 1 : -1, palette)
           const keys = Object.fromEntries((shown?.targets ?? []).filter(one => one.member === member).map(one => [one.key, one.letter]))
-          const props: ReplyProps = { text, open, tints, ask, letters: shown === null ? null : { action: shown.action, keys } }
+          const props: ReplyProps = { text, open, tints, ask, letters: shown === null ? null : { action: shown.action, keys }, look }
           return <Client key={key} module="./reply.tsx" props={props} width="100%" />
         }),
       )
@@ -476,4 +667,3 @@ function canPress<E extends Pick<RenderInput, 'surface' | 'viewport'>>(e: E): e 
 function isMainScreen(e: Pick<RenderInput, 'surface' | 'viewport'>): boolean {
   return e.surface === 'terminal' && e.viewport?.isFullscreen === false
 }
-
