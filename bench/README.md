@@ -21,7 +21,7 @@ rule and are counted as written. Across 69 replies the skim was 17% of the origi
 average (never below 96%), and ran 6% longer: a long form repeats its short form's words so it reads
 in place.
 
-**Coverage** (`coverage.ts`). Fewer words only matters if the skim still says the important things.
+**Coverage** (`coverage.ts`). Fewer words only matter if the skim still says the important things.
 For 20 of the replayed replies, a blind reader saw only one version and wrote down every decision,
 action and result it was told about. A grader listed the original's must-know points and checked
 both readers against the same list. The reader of the original is the control: it shows how strict
