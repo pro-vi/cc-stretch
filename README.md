@@ -99,6 +99,12 @@ never lose your place.
   and `highlight`, which as of Claude Code 2.1.302 `/plugin`'s Configure options also change;
   `close` puts the toolbar away and drops a style you tried but did not save. In the Claude desktop
   app, where cc-stretch draws stretches as links, there is no toolbar.
+- **Colours for your screen.** The words an opened stretch adds, and the `tinted` highlight, come
+  in one palette for a dark screen and one for a light screen. cc-stretch takes the light one when
+  Claude Code's theme setting starts with `light`. As of Claude Code 2.1.319 a plugin reads the
+  setting, not the theme it resolves to, so `auto` gets the dark one even on a light screen. The
+  `palette` setting, `light` or `dark` in `/plugin`'s Configure options, picks one whatever the
+  theme setting says.
 
 ## Limits
 
