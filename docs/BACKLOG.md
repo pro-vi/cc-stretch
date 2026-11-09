@@ -1,9 +1,9 @@
 # Backlog
 
-Lanes awaiting triage. Verdicts: architect | direct | drop | defer | pending.
-Checkbox marks a lane consumed (plan written, or direct commit landed).
+Tickets awaiting triage. Verdicts: architect | direct | drop | defer | pending.
+Checkbox marks a ticket consumed (plan written, or direct commit landed).
 
-## Lanes
+## Tickets
 
 - [ ] **plugin-folder** — an install copies the plugin, not the repo's dev tools · verdict: direct
 - [ ] **renderers-use-drawn-as** — every renderer draws a stretch the way `drawnAs` says · verdict: direct
