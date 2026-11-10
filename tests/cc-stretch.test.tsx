@@ -1994,6 +1994,34 @@ describe('style', () => {
       expect(await backgroundOf(ui, 'two')).toBe('#e1bfff')
       await ui.unmount()
     })
+
+    const AUTO = { key: 'theme', label: 'Theme', kind: 'choice', value: 'auto', provider: { plugin: 'engine', tier: 'core' }, isLocked: false } as const
+    const LIGHT = { ...AUTO, value: 'light' } as const
+
+    test('palette light draws the light theme\'s colours under the auto theme, in any case', { options: { highlight: 'tinted', palette: ' Light ' } }, async ($, on) => {
+      on('config.list', () => ({ value: [AUTO] }))
+      const ui = await mountReply($, FULLSCREEN, 'A {{one|one more}} and {{two|two more}}.')
+      expect(await phraseProps(ui, 'one')).toMatchObject({ backgroundColor: '#e5dac7', color: '#1c1c1c' })
+      await pressOn(ui, 'two')
+      await ui.advance(2000)
+      const added = (await ui.findAll({ type: 'Text', in: FIRST })).filter(piece => piece.text.trim() === 'more')
+      expect(added.map(piece => piece.props.color)).toEqual(['#4a008c'])
+      await ui.unmount()
+    })
+
+    test('palette dark keeps the dark theme\'s colours under the light theme', { options: { highlight: 'tinted', palette: 'dark' } }, async ($, on) => {
+      on('config.list', () => ({ value: [LIGHT] }))
+      const ui = await mountReply($, FULLSCREEN, 'A {{one|one more}} and {{two|two more}}.')
+      expect(await backgroundOf(ui, 'one')).toBe(DEEP[0])
+      await ui.unmount()
+    })
+
+    test('a palette that names neither light nor dark follows the theme setting', { options: { highlight: 'tinted', palette: 'solarized' } }, async ($, on) => {
+      on('config.list', () => ({ value: [LIGHT] }))
+      const ui = await mountReply($, FULLSCREEN, 'A {{one|one more}} and {{two|two more}}.')
+      expect(await backgroundOf(ui, 'one')).toBe('#e5dac7')
+      await ui.unmount()
+    })
   })
 
   test('lookOf reads marks in any case, with commas or spaces, in toolbar order', () => {

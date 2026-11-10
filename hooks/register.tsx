@@ -58,6 +58,14 @@ const paletteOf = (base: readonly Rgb[], text: Rgb, background: Rgb) =>
     return { soft: hex(soft), faded: hex(mix(soft, background, 0.35)), highlight: hex(mix(rgb, background, 0.75)) }
   })
 const PALETTES = { dark: paletteOf(BASE.dark, WHITE, BLACK), light: paletteOf(BASE.light, BLACK, WHITE) }
+/**
+ * The `palette` setting: `light` or `dark`, in any case, picks that palette whatever the theme setting
+ * says; anything else is '', which follows the theme setting.
+ */
+const forcedPaletteOf = (value: unknown): keyof typeof PALETTES | '' => {
+  const name = typeof value === 'string' ? value.trim().toLowerCase() : ''
+  return name === 'light' || name === 'dark' ? name : ''
+}
 /** How many colours stretches take in turn. */
 const HUES = BASE.dark.length
 /** `count`, or the next count when `count` would give the colour of the stretch holding it, whose count is `parent`. */
@@ -271,6 +279,7 @@ async function follow($: EngineInterface, href: string): Promise<void> {
 
 export const register: Register = (on, options) => {
   const baseLook = lookOf(options)
+  const forcedPalette = forcedPaletteOf(options.palette)
   // As of Claude Code 2.1.302, /cc-stretch:style is listed from commands/style.md and answered here;
   // Claude reads the file only when the hooks did not answer. It only shows the toolbar: the band
   // above the prompt has its own [-], which collapses it without the plugin knowing, so a toggle could
@@ -472,9 +481,13 @@ export const register: Register = (on, options) => {
       const look = storedLook(picked) ?? baseLook
       const isTinted = look.highlight === TINTED
       // The theme matters only once a stretch in this reply is drawn in its colour: open, or with the tinted highlight.
+      // The palette setting, when it names one, wins: as of Claude Code 2.1.319 the theme row holds the
+      // setting, so `auto` reads as `auto` and not as the theme the screen shows.
       const isLight =
         (isTinted || Object.keys(order).length > 0) &&
-        (await $.config.list().catch(() => [])).some(row => row.key === 'theme' && String(row.value).startsWith('light'))
+        (forcedPalette !== ''
+          ? forcedPalette === 'light'
+          : (await $.config.list().catch(() => [])).some(row => row.key === 'theme' && String(row.value).startsWith('light')))
       const palette = isLight ? PALETTES.light : PALETTES.dark
       const paragraphs = paragraphsOf(text).map((paragraph, i) => ({ ...paragraph, key: `paragraph-${i}`, member: `${e.requestId}#paragraph-${i}` }))
       const holding = paragraphs.filter(p => p.hasStretch)
