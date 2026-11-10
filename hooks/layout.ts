@@ -357,8 +357,12 @@ export function targetsIn(parts: Segment[], open: readonly string[], action: Act
   })
 }
 
-/** The rows `text` takes in a region `columns` cells wide. */
-export function layout(text: string, columns: number): Row[] {
+/**
+ * The rows `text` takes in a region `columns` cells wide. `isGrowing` says a stretch in `text` is
+ * growing or shrinking: then, on every line, a `*` or `_` that opens italics and has met no closing
+ * mark is not drawn and what follows it is italic, as its closing mark may be in words yet to arrive.
+ */
+export function layout(text: string, columns: number, isGrowing = false): Row[] {
   const width = Math.max(10, columns)
   const rows: Row[] = []
   let fence: string | undefined
@@ -374,7 +378,7 @@ export function layout(text: string, columns: number): Row[] {
       fence = marker
       continue
     }
-    rows.push(...rowsOf(line, width))
+    rows.push(...rowsOf(line, width, isGrowing))
   }
 
   return rows
@@ -502,9 +506,9 @@ function untint(marked: string): Line {
   return { text, tints }
 }
 
-function rowsOf({ text: line, tints }: Line, width: number): Row[] {
+function rowsOf({ text: line, tints }: Line, width: number, isGrowing: boolean): Row[] {
   // The runs of the line's end from `rest` on.
-  const inlineOf = (rest: string, isBold = false) => inline(rest, tints.slice(line.length - rest.length), isBold)
+  const inlineOf = (rest: string, isBold = false) => inline(rest, tints.slice(line.length - rest.length), isBold, isGrowing)
   if (line.trim() === '') return [[]]
   if (isRule(line)) return [[{ text: '─'.repeat(Math.min(width, 60)), dim: true }]]
   // A table row keeps its columns: written as is, cut where the region ends.
@@ -523,27 +527,55 @@ function rowsOf({ text: line, tints }: Line, width: number): Row[] {
   return wrap(inlineOf(line.slice(indent.length)), width, indent, indent)
 }
 
-/** A line's inline markdown as runs: bold, italic, code spans, links, pressable phrases, each character in its tint. */
-function inline(text: string, tints: Line['tints'], isBold = false): Run[] {
+/**
+ * Whether the `*` or `_` at `at` can open italics (`isOpening`) or close them: the character after an
+ * opening mark, or before a closing one, is not white space. A `_` also has no letter or digit on its
+ * other side and no `_` beside it, so `snake_case` and `__init__` stay as written.
+ */
+function marksItalics(text: string, at: number, isOpening: boolean): boolean {
+  const before = text[at - 1] ?? ' '
+  const after = text[at + 1] ?? ' '
+  if (!/\S/.test(isOpening ? after : before)) return false
+  return text[at] === '*' || (before !== '_' && after !== '_' && !HAS_WORDS.test(isOpening ? before : after))
+}
+
+/**
+ * A line's inline markdown as runs: bold, italic, code spans, links, pressable phrases, each character
+ * in its tint. Italics run from a `*` or `_` to the nearest closing mark of its kind. An opening mark
+ * that meets no closing mark on the line is text, as CommonMark reads it, unless `isGrowing`. Bold
+ * toggles at every `**`, closed or not.
+ */
+function inline(text: string, tints: Line['tints'], isBold: boolean, isGrowing: boolean): Run[] {
   const runs: Run[] = []
+  // The opening marks that have met no closing mark yet, outermost first: each the run it is drawn as,
+  // since it is text until its closing mark is met.
+  const openMarks: Run[] = []
   let bold = isBold
-  let italic = false
   let pressable: Run['link']
-  // `chunk` starts at character `at`, and takes its tint.
-  const emit = (chunk: string, at: number, extra: Omit<Run, 'text'> = {}) => {
-    if (chunk === '') return
+  // `chunk`, which starts at character `at`, in its tint and the styles in force.
+  const runOf = (chunk: string, at: number, extra: Omit<Run, 'text'> = {}): Run => {
     const tint = tints[at]
-    const run: Run = {
+    return {
       text: chunk,
       ...(bold && { bold: true }),
-      ...(italic && { italic: true }),
       ...(tint && { tint }),
       ...(pressable && { link: pressable }),
       ...extra,
     }
+  }
+  const emit = (chunk: string, at: number, extra: Omit<Run, 'text'> = {}) => {
+    if (chunk === '') return
+    const run = runOf(chunk, at, extra)
     const last = runs.at(-1)
-    if (last !== undefined && isSameStyle(last, run)) last.text += chunk
+    // An open mark stays a run of its own, to be taken out if its closing mark is met.
+    if (last !== undefined && !openMarks.includes(last) && isSameStyle(last, run)) last.text += chunk
     else runs.push(run)
+  }
+  // `mark` met its closing mark: what follows it is italic, and it is not drawn.
+  const italicise = (mark: Run) => {
+    const at = runs.indexOf(mark)
+    for (const run of runs.slice(at + 1)) run.italic = true
+    runs.splice(at, 1)
   }
 
   for (let i = 0; i < text.length; ) {
@@ -577,10 +609,23 @@ function inline(text: string, tints: Line['tints'], isBold = false): Run[] {
       i += 2
       continue
     }
-    if (ch === '*' && /\S/.test((italic ? text[i - 1] : text[i + 1]) ?? ' ')) {
-      italic = !italic
-      i += 1
-      continue
+    if (ch === '*' || ch === '_') {
+      const at = openMarks.findLastIndex(mark => mark.text === ch)
+      const isClosing = at !== -1 && marksItalics(text, i, false)
+      if (isClosing || marksItalics(text, i, true)) {
+        // A mark that can close the nearest open mark of its kind does. Any other mark that can open
+        // takes that one's place. Either way that mark is open no longer, nor is any opened after it:
+        // unless this one closed it, it met no closing mark and stays text.
+        const [opening] = at === -1 ? [] : openMarks.splice(at)
+        if (isClosing && opening !== undefined) italicise(opening)
+        else {
+          const mark = runOf(ch, i)
+          runs.push(mark)
+          openMarks.push(mark)
+        }
+        i += 1
+        continue
+      }
     }
     const markdownLink = /^\[([^\]\n\ufdd0-\ufdd2]+)\]\(([^)\s]+)\)/.exec(text.slice(i))
     if (markdownLink) {
@@ -594,7 +639,7 @@ function inline(text: string, tints: Line['tints'], isBold = false): Run[] {
       i += markdownLink[0].length
       continue
     }
-    const url = ch === 'h' && !/\w/.test(text[i - 1] ?? ' ') ? bareUrlAt(text, i) : undefined
+    const url = ch === 'h' && !/[^\W_]/.test(text[i - 1] ?? ' ') ? bareUrlAt(text, i) : undefined
     if (url !== undefined) {
       for (let k = 0; k < url.length; k++) emit(url[k] ?? '', i + k, { href: url })
       i += url.length
@@ -603,8 +648,17 @@ function inline(text: string, tints: Line['tints'], isBold = false): Run[] {
     emit(ch, i)
     i += 1
   }
+  // While a stretch grows or shrinks, a mark still open may meet its closing mark in words yet to arrive.
+  if (isGrowing) for (const mark of [...openMarks]) italicise(mark)
+  // A mark that stayed text joins the text around it.
+  const joined: Run[] = []
+  for (const run of runs) {
+    const last = joined.at(-1)
+    if (last !== undefined && isSameStyle(last, run)) last.text += run.text
+    else joined.push(run)
+  }
 
-  return runs
+  return joined
 }
 
 /**

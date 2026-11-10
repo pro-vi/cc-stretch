@@ -564,6 +564,53 @@ describe('layout', () => {
     expect(rows[1]?.map(run => run.text).join('')).toBe('  let x = {{y}}')
   })
 
+  describe('italics', () => {
+    /** A line's runs as text, each italic one between slashes. */
+    const drawn = (text: string, isGrowing = false) => (layout(text, 200, isGrowing)[0] ?? []).map(run => (run.italic ? `/${run.text}/` : run.text)).join('')
+
+    test('an underscore marks italics as a star does, and neither mark is drawn', () => {
+      expect(drawn('Retry _only_ on ARM, where the *only* step runs _at most once_.')).toBe('Retry /only/ on ARM, where the /only/ step runs /at most once/.')
+    })
+
+    test('an underscore inside a word, or beside another underscore, is text', () => {
+      const names = 'Call snake_case, my_var_name and __init__ here.'
+      expect(drawn(names)).toBe(names)
+    })
+
+    test('an opening mark with no closing mark on its line is text', () => {
+      const lone = 'Set _id on it, match *.ts files, or 5 * 3.'
+      expect(drawn(lone)).toBe(lone)
+    })
+
+    test('a closing mark pairs with the nearest opening mark of its kind before it', () => {
+      expect(drawn('Set _id and _name, then _commit_.')).toBe('Set _id and _name, then /commit/.')
+    })
+
+    test('italics close only on the mark that opened them', () => {
+      expect(drawn('A *star_ and star* here.')).toBe('A /star_ and star/ here.')
+      expect(drawn('An _under* and under_ here.')).toBe('An /under* and under/ here.')
+    })
+
+    test('italics of one mark hold beside an unpaired mark of the other, and inside italics of the other', () => {
+      expect(drawn('Glob *.ts, keep _id, and run it _at most once_ and *never* twice.')).toBe('Glob *.ts, keep _id, and run it /at most once/ and /never/ twice.')
+      expect(drawn('A *star _inside_ star* here.')).toBe('A /star inside star/ here.')
+      expect(drawn('Then *a _b* c_ ends.')).toBe('Then /a _b/ c_ ends.')
+    })
+
+    test('a code span, a link label and a URL keep their underscores, inside italics too', () => {
+      const runs = layout('_See `a_b` and_ [c_d](https://x.invalid/e_f) or https://x.invalid/g_h_i.', 200)[0] ?? []
+      expect(runs.map(run => run.text).join('')).toBe('See a_b and c_d or https://x.invalid/g_h_i.')
+      expect(runs.filter(run => run.italic).map(run => run.text)).toEqual(['See ', 'a_b', ' and'])
+      const link = (layout('Read _https://x.invalid/a_b_ first.', 200)[0] ?? []).find(run => run.href)
+      expect(link).toMatchObject({ text: 'https://x.invalid/a_b', href: 'https://x.invalid/a_b', italic: true })
+    })
+
+    test('while a stretch grows or shrinks, a mark that has met no closing mark is not drawn, and what follows it is italic', () => {
+      expect(drawn('Short, with _at most', true)).toBe('Short, with /at most/')
+      expect(drawn('Short, with _at most')).toBe('Short, with _at most')
+    })
+  })
+
   test('a code span or a link label tinted word by word draws whole, and the tint ends where its words do', async () => {
     const added = (word: string) => tint('#d3bdff', word)
     const text = `${added('Run')} ${added('`claude')} ${added('plugin')} install\` and ${added('[the')} ${added('docs')} page](https://x.invalid/a) now`
@@ -764,6 +811,19 @@ test('half a code span drawn by a growing long form never draws the marks of a l
     expect(shown).not.toMatch(/[\ufdd0-\ufdd4]/)
   }
   expect(await textIn(ui)).toBe('Run npm run test:unit -- --watch once. « Then merge main.')
+  await ui.unmount()
+})
+
+test('underscore italics in a long form are drawn italic, and no frame of its growth draws an underscore', async $ => {
+  const ui = await mountReply($, FULLSCREEN, '{{Short.|Short, with an _emphasised_ word and _two more_ here.}}')
+  await pressOn(ui, 'Short.')
+  for (let frame = 0; frame < 120; frame += 1) {
+    await ui.advance(16)
+    expect(await textIn(ui)).not.toContain('_')
+  }
+  expect(await textIn(ui)).toBe('Short, with an emphasised word and two more here. «')
+  const italic = (await ui.findAll({ type: 'Text', in: FIRST })).filter(piece => piece.props.italic === true).map(piece => piece.text)
+  expect(italic).toEqual(['emphasised', 'two more'])
   await ui.unmount()
 })
 

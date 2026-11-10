@@ -42,6 +42,8 @@ Checkbox marks a ticket consumed (plan written, or direct commit landed).
 - [ ] **windows-link-opener** — on Windows a ctrl- or alt-click on a link in a paragraph that holds a stretch opens it · verdict: pending · needs: a live session on Windows
 - [ ] **desktop-before-2.1.300** — the desktop app on a bundled Claude Code before 2.1.300 shows stretches with 0.5.3 · verdict: pending · needs: a look at the desktop app while it bundles 2.1.295 or 2.1.299
 - [ ] **live-checks-theme** — the live checks pass whatever theme the person has set · verdict: direct
+- [ ] **marks-while-growing** — while a stretch grows or shrinks, no frame draws a mark the finished text hides, or hides one it draws · verdict: defer · signal: none · promote when: a stray backtick, or words drawn italic that finish upright, shows in a recorded take, or a reader reports one
+- [ ] **unpaired-bold** — a `**` with no closing `**` on its line is text · verdict: defer · signal: none · promote when: a reader reports a line gone bold after a `**`
 
 ## plugin-folder
 
@@ -463,3 +465,33 @@ stretch fails under `auto`. `LINK_FG` in `film/e2e/live.mjs` is `rgb(153,204,255
 2.1.322 draws for `suggestion` under `dark-daltonized`; under `dark` it draws `rgb(177,185,249)`. Fix
 shape: add one `theme` to the `--settings` JSON `live.mjs` starts every session with, and write each
 expected colour for that theme.
+
+## marks-while-growing
+
+A long form's words arrive a few at a time, so a frame can hold half of a pair of marks. Each case
+below was seen in the frames `grow` and `layout` give for it, not in a take.
+
+- A code span whose closing backtick has not arrived draws its opening backtick: `npm run test`
+  shows a backtick before `npm` until `test` arrives.
+- While a stretch in the paragraph grows or shrinks, `layout` in `hooks/layout.ts` hides an opening
+  `*` or `_` that has met no closing mark and draws what follows it italic, so `_two words_` grows
+  without its marks. An unpaired mark pays for it: in `Short, with a lone _id per run.` the `_` is
+  hidden and `id per` is italic until the last frame, where the `_` appears and the words after it
+  move a cell.
+- That holds for every line of the paragraph, and a list is one paragraph. So an unpaired mark in
+  text the reader already has, such as the `*` of `- Match *.ts files`, is hidden and its line
+  italic from the press on a stretch in another item until the growth ends.
+- A closing mark that arrives before its opening one is drawn: the words before the first anchor
+  arrive last word first, so `Run _the whole test_ now.` grown from `now.` shows `test_` until
+  `_the` arrives.
+- Fix shape: `grow` in `hooks/grow.ts` pairs the marks on the whole long form and shows each word in
+  the style it has there. `layout`'s `isGrowing` then goes.
+
+## unpaired-bold
+
+`inline` in `hooks/layout.ts` toggles bold at every `**`, closed or not, so a `**` with no partner
+(`**kwargs`, `2 ** 3`, `**/*.ts`) is not drawn and the rest of its line is bold. Italics were read
+the same way until they were made to wait for their closing mark
+([#23](https://github.com/pro-vi/cc-stretch/issues/23)). Bold was left alone because a
+`**bold phrase**` whose last word has yet to arrive in a growing stretch would otherwise show its
+`**`; the fix for `marks-while-growing` removes that reason.

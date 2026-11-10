@@ -131,7 +131,7 @@ const Reply: ClientModule<ReplyProps, State> = (props, surface) => {
   const segments = parse(props.text)
   // Read through Maps, which hold own keys only: a stretch keyed `constructor` must not find Object's.
   const tints = new Map(Object.entries(props.tints))
-  const laid = layout(compose(segments, state, tints), surface.columns > 0 ? surface.columns : 80)
+  const laid = layout(compose(segments, state, tints), surface.columns > 0 ? surface.columns : 80, state.growth !== null)
   const lettering = lettered(laid, letters)
   drawn.set(surface, { laid, rows: lettering, segments })
   const rows = state.selection === null ? lettering : selected(lettering, laid, state.selection)
