@@ -35,6 +35,14 @@ was opened. So far that is five replies from the session that built the plugin: 
 the full text, and in the three replies with a reading note I read 51% of the words. I was clicking
 everything to see if it worked, so that number is not typical of anything.
 
+**Depth** (`depth.ts`). Whether Claude stops writing stretches deep in a long session. It counts
+the replies of 150 words or more that hold a stretch, by the context tokens their request read, and
+only where that request carried the guide: Claude Code 2.1.300 to 2.1.322 record each request's
+system prompt in the transcript. On 667 of my transcripts, 1,137 of 1,171 such replies held a
+stretch (97%): 92 of 92 under 100k tokens, 319 of 342 at 400k and over (93%). Where the request
+carried no guide, as in a headless session, 5 of 2,832 did. It prints counts only, so its output
+can go into an issue as it is.
+
 ## Read these numbers honestly
 
 - The replay is a **rewrite** of replies written without the plugin, not replies Claude wrote with
@@ -53,6 +61,7 @@ node bench/replay.ts --per-project 20 ~/.claude/projects/<project>... > bench/ou
 node bench/coverage.ts --per-project 5 > bench/out/coverage.jsonl
 node bench/native.ts ~/.claude/projects/<project>/<session>.jsonl > bench/out/native.jsonl
 node bench/report.ts
+node bench/depth.ts ~/.claude/projects/*/*.jsonl
 ```
 
 Rewrites and coverage use `claude -p` on your own account. Raw text stays in `bench/out/`, which
