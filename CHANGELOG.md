@@ -1,5 +1,21 @@
 # Changelog
 
+## 0.5.6 — 2026-11-10
+
+- On a machine with managed settings, or on a Team or Enterprise account, cc-stretch now says why
+  replies come with no stretches. As of Claude Code 2.1.322 its built-in plugin
+  `cc-plugin-sec-default` runs there and keeps the system prompt out of reach of every plugin a
+  person installs, so cc-stretch's guide never reaches Claude
+  ([#3](https://github.com/pro-vi/cc-stretch/issues/3)). At the prompt after the first reply written
+  that way, one dim line in the transcript says so, and that only the organization's administrator
+  can change it, in its managed settings. cc-stretch does not send the guide another way, which
+  would go around that control. The README's Limits names the limit. The line is not checked on a
+  machine that has managed settings. The debug log that names the cause is @dcerisier's.
+- `bench/depth.ts` counts, from session transcripts, how often a reply of 150 words or more holds a
+  stretch, by how deep into its session it came, and only where the request carried the guide. On
+  667 of my transcripts 1,137 of 1,171 such replies held one (97%), and 319 of 342 at 400k context
+  tokens and over (93%).
+
 ## 0.5.5 — 2026-11-10
 
 - On a light screen with Claude Code's theme set to `auto`, the words an opened stretch adds can
