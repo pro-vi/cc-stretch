@@ -39,6 +39,13 @@ const FULLSCREEN_HOW = 'run /tui fullscreen. If it says fullscreen is already on
 const MAIN_SCREEN_NOTE =
   "cc-stretch: stretches are open because this session is on Claude Code's main screen, where a printed reply cannot change. " +
   `For clickable stretches, ${FULLSCREEN_HOW}`
+// As of Claude Code 2.1.322 its built-in plugin cc-plugin-sec-default, seated on a machine with
+// managed settings and for a Team or Enterprise account, sends prompt.compose and classic.* past the
+// hooks of every plugin a person installs, so the guide is never added and Claude writes no stretch.
+const GUIDE_SKIPPED_NOTE =
+  'cc-stretch: Claude Code has not asked this plugin for its writing guide, so Claude is not told to write stretches. ' +
+  'Claude Code skips that step for the plugins a person installs on a machine with managed settings and on a Team or Enterprise account. ' +
+  "Only the organization's administrator can change that, in its managed settings."
 
 // Where the palette setting or the theme setting names a palette, the words a stretch adds are drawn
 // in Claude Code's own theme colours (its 2.1.300 values for warning, autoAccept, planMode and
@@ -394,7 +401,16 @@ export const register: Register = (on, options) => {
     return flush
   })
 
+  // Whether this load of the plugin still waits for Claude Code to ask for the guide, until it asks
+  // or the reader is told it has not; and the reply that stood last when a prompt from the composer
+  // last passed, undefined before the first. As of Claude Code 2.1.322 the system prompt is composed
+  // again for every prompt, after prompt.submit in the terminal and before it in a stream-json
+  // session. So a reply that has come since such a prompt, with the wait still on, was written
+  // without the guide. Kept here, not in plugin state, so that each load starts the wait over.
+  let isAwaitingGuideAsk = true
+  let replyAtPrompt: string | undefined
   on('prompt.compose', async ($, e, next) => {
+    isAwaitingGuideAsk = false
     const composed = await next(e)
     if (e.surfaces.length === 0) return composed
 
@@ -410,9 +426,10 @@ export const register: Register = (on, options) => {
     if (e.origin.kind !== 'composer') return next(e)
 
     const opened = await read($, seen)
+    const reply = lastReply(await $.session.messages())
     // A stretch that is not a link is drawn open, so it is neither opened nor unopened. Each is named
     // as its paragraph draws it, where a lone period is named with the words before it.
-    const written = paragraphsOf(lastReply(await $.session.messages()))
+    const written = paragraphsOf(reply)
       .filter(paragraph => paragraph.hasStretch)
       .flatMap(({ text }) => {
         const parts = parse(text)
@@ -425,6 +442,13 @@ export const register: Register = (on, options) => {
     await update($, seen, () => [])
     await update($, newestReply, () => '')
     await update($, lettering, () => null)
+    // Said once, in a dim line of the transcript that is not sent to Claude (`$.ui.log`, by the plugin
+    // API types that Claude Code 2.1.294 and 2.1.302 wrote).
+    if (isAwaitingGuideAsk && replyAtPrompt !== undefined && reply !== '' && reply !== replyAtPrompt) {
+      isAwaitingGuideAsk = false
+      $.ui.log(GUIDE_SKIPPED_NOTE)
+    }
+    replyAtPrompt = reply
     if (opened.length === 0 && unopened.length === 0) return next(e)
 
     const quote = (list: OpenedStretch[]) => list.map(stretch => `"${stretch.name}"`).join(', ')

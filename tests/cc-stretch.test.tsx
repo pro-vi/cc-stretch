@@ -1638,6 +1638,67 @@ test('the system prompt carries the guide while something draws', async ($, on) 
   expect(headless.sections.some(s => s.id === 'cc-stretch:guide')).toBe(false)
 })
 
+describe('a guide Claude Code never asks for', () => {
+  const ASKED: SessionMessage[] = [
+    { role: 'user', text: 'why does CI fail?', toolUses: [] },
+    { role: 'assistant', text: 'The cache is stale.', toolUses: [] },
+  ]
+  /** The dim lines the plugin writes into the transcript, with the session's messages read from `session.messages`. */
+  const session = (on: On) => {
+    const held: { said: string[]; messages: SessionMessage[] } = { said: [], messages: [] }
+    on('ui.log', (_, e) => {
+      held.said.push(e.text)
+      return { value: undefined }
+    })
+    on('session.messages', () => ({ value: held.messages }))
+    on('prompt.submit', (_, e) => ({ text: e.text, context: e.context }))
+    on('prompt.compose', () => ({ sections: [] }))
+    return held
+  }
+  const prompt = ($: Engine, text: string) => $.prompt.submit({ text, wait: false, origin: { kind: 'composer' } })
+
+  test('the prompt after a reply written without it says why Claude writes no stretches, once', async ($, on) => {
+    const held = session(on)
+    await prompt($, 'why does CI fail?')
+    // A prompt that got no reply, such as a command, shows nothing yet.
+    await prompt($, '/help')
+    expect(held.said).toEqual([])
+
+    held.messages = ASKED
+    await prompt($, 'and?')
+    expect(held.said.length).toBe(1)
+    expect(held.said[0]).toContain('has not asked this plugin for its writing guide')
+    expect(held.said[0]).toContain('managed settings')
+
+    await prompt($, 'ok')
+    expect(held.said.length).toBe(1)
+  })
+
+  for (const surfaces of [['terminal'], []] satisfies RenderSurface[][]) {
+    test(`nothing is said once Claude Code has asked for it with ${surfaces.length === 0 ? 'nothing' : surfaces.join(' and ')} drawing`, async ($, on) => {
+      const held = session(on)
+      await prompt($, 'why does CI fail?')
+      await $.prompt.compose({ ...COMPOSE, surfaces })
+      held.messages = ASKED
+      await prompt($, 'and?')
+      expect(held.said).toEqual([])
+    })
+  }
+
+  test('a reply from before the plugin loaded says nothing, a later one does', async ($, on) => {
+    const held = session(on)
+    held.messages = ASKED
+    // A command draws no reply and no ask, so the reply that stands is still the one from before.
+    await prompt($, '/help')
+    await prompt($, 'and?')
+    expect(held.said).toEqual([])
+
+    held.messages = [...ASKED, { role: 'user', text: 'and?', toolUses: [] }, { role: 'assistant', text: 'Its key hashes one file.', toolUses: [] }]
+    await prompt($, 'ok')
+    expect(held.said.length).toBe(1)
+  })
+})
+
 test('the next prompt tells the model which stretches were opened and which not', async ($, on) => {
   on('session.messages', () => ({
     value: [

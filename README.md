@@ -17,9 +17,9 @@ In a Claude Code session:
 ```
 
 In the terminal, clicks need Claude Code's fullscreen renderer. `/tui fullscreen` switches to it,
-restarting and resuming your session. If stretches still show open, see [Limits](#limits). In the
-Claude desktop app stretches are links: click one to open it in place, click `«` to close it. No
-setting needed.
+restarting and resuming your session. If stretches still show open, or replies come with none, see
+[Limits](#limits). In the Claude desktop app stretches are links: click one to open it in place,
+click `«` to close it. No setting needed.
 
 To update, run `claude plugin update cc-stretch@cc-stretch` in a shell, or open `/plugin`, find
 cc-stretch under Installed and choose Update now. As of Claude Code 2.1.302 a plugin from this
@@ -130,6 +130,15 @@ never lose your place.
 - Claude writes every level up front, so a reply costs about as many tokens as before. You read
   less; you don't pay less.
 - The `{{short|long}}` markup shows as raw text wherever the plugin isn't loaded.
+- On a machine with managed settings, and on a Team or Enterprise account, Claude writes no
+  stretches: replies stay plain. As of Claude Code 2.1.322 its built-in plugin
+  `cc-plugin-sec-default` runs there, and it keeps the system prompt out of reach of every plugin a
+  person installs, so cc-stretch's guide never reaches Claude; a `--debug` log says
+  `prompt.compose bypassed by cc-plugin-sec-default`
+  ([#3](https://github.com/pro-vi/cc-stretch/issues/3)). cc-stretch says so in a dim line, at the
+  prompt after the first reply written that way. It does not send the guide another way, which
+  would go around that control; only the organization's administrator can change it, in its
+  managed settings.
 - Built on Claude Code's function-hook plugin API, which is early access and changes between
   releases. Checked in the terminal on macOS with Claude Code 2.1.300 to 2.1.302 and 2.1.306, and
   with 2.1.292 to 2.1.294 in cc-stretch 0.1.0; in the Claude desktop app with 2.1.295 in cc-stretch
