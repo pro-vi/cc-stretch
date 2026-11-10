@@ -473,19 +473,16 @@ below was seen in the frames `grow` and `layout` give for it, not in a take.
 
 - A code span whose closing backtick has not arrived draws its opening backtick: `npm run test`
   shows a backtick before `npm` until `test` arrives.
-- While a stretch in the paragraph grows or shrinks, `layout` in `hooks/layout.ts` hides an opening
-  `*` or `_` that has met no closing mark and draws what follows it italic, so `_two words_` grows
-  without its marks. An unpaired mark pays for it: in `Short, with a lone _id per run.` the `_` is
-  hidden and `id per` is italic until the last frame, where the `_` appears and the words after it
-  move a cell.
-- That holds for every line of the paragraph, and a list is one paragraph. So an unpaired mark in
-  text the reader already has, such as the `*` of `- Match *.ts files`, is hidden and its line
-  italic from the press on a stretch in another item until the growth ends.
+- In arriving text, `inline` in `hooks/layout.ts` hides an opening `*` or `_` that has met no closing
+  mark and draws the arriving text after it italic, so `_two words_` grows without its marks. An
+  unpaired mark in the long form pays for it: in `Short, with a lone _id per run.` the `_` is hidden
+  and `id per` is italic until the last frame, where the `_` appears and the words after it move a
+  cell.
 - A closing mark that arrives before its opening one is drawn: the words before the first anchor
   arrive last word first, so `Run _the whole test_ now.` grown from `now.` shows `test_` until
   `_the` arrives.
 - Fix shape: `grow` in `hooks/grow.ts` pairs the marks on the whole long form and shows each word in
-  the style it has there. `layout`'s `isGrowing` then goes.
+  the style it has there. `asArriving` in `hooks/layout.ts` then goes.
 
 ## unpaired-bold
 

@@ -1,7 +1,7 @@
 import type { ClientModule, ClientPointerEvent, ClientSurface, TextProps } from 'claude-code'
 
 import { grow, lengthOf } from './grow'
-import { continuationOf, hrefAt, isMarkup, isWebLink, layout, link, linkAt, namesOf, openedOf, targetsIn, tint, widthOf, withLeadIns } from './layout'
+import { asArriving, continuationOf, hrefAt, isMarkup, isWebLink, layout, link, linkAt, namesOf, openedOf, targetsIn, tint, widthOf, withLeadIns } from './layout'
 import type { Action, OpenedStretch, Row, Run } from './layout'
 import { closeAfter, isLinkable, KEY_SEPARATOR, parse } from './parse'
 import { DEFAULT_LOOK, drawsHighlight, lookProps } from './look'
@@ -131,7 +131,7 @@ const Reply: ClientModule<ReplyProps, State> = (props, surface) => {
   const segments = parse(props.text)
   // Read through Maps, which hold own keys only: a stretch keyed `constructor` must not find Object's.
   const tints = new Map(Object.entries(props.tints))
-  const laid = layout(compose(segments, state, tints), surface.columns > 0 ? surface.columns : 80, state.growth !== null)
+  const laid = layout(compose(segments, state, tints), surface.columns > 0 ? surface.columns : 80)
   const lettering = lettered(laid, letters)
   drawn.set(surface, { laid, rows: lettering, segments })
   const rows = state.selection === null ? lettering : selected(lettering, laid, state.selection)
@@ -177,7 +177,7 @@ function compose(segments: Segment[], state: State, tints: ReadonlyMap<string, T
     if (!isLinkable(stretch)) return stretch.long.length === 0 ? stretch.short : write(stretch.long)
     const colours = tints.get(stretch.key)
     const paint = (word: string) => (colours === undefined || isMarkup(word) ? word : tint(colours.words, word))
-    if (state.growth?.key === stretch.key) return grow(stretch.short, stretch.long, easeInOut(state.growth.progress), draw, paint)
+    if (state.growth?.key === stretch.key) return asArriving(grow(stretch.short, stretch.long, easeInOut(state.growth.progress), draw, paint))
     if (!state.open.includes(stretch.key)) return link('open', stretch.key, stretch.short)
     const closer = link('close', stretch.key, '«')
     const long = grow(stretch.short, stretch.long, 1, draw, paint)

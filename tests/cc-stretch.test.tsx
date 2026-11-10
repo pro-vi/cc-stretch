@@ -5,7 +5,7 @@ import type { Engine } from 'claude-code/testing'
 import { grow } from '../hooks/grow'
 import { contrastOn } from '../hooks/contrast'
 import { DEFAULT_LOOK, lookOf, marksSetting } from '../hooks/look'
-import { hrefAt, layout, leadInOf, link, linkAt, namesOf, tint, widthOf, withLeadIns } from '../hooks/layout'
+import { asArriving, hrefAt, layout, leadInOf, link, linkAt, namesOf, tint, widthOf, withLeadIns } from '../hooks/layout'
 import { closeAfter, hideLongForms, newStreamState, paragraphsOf, parse, stretches } from '../hooks/parse'
 import Reply from '../hooks/reply'
 
@@ -566,7 +566,7 @@ describe('layout', () => {
 
   describe('italics', () => {
     /** A line's runs as text, each italic one between slashes. */
-    const drawn = (text: string, isGrowing = false) => (layout(text, 200, isGrowing)[0] ?? []).map(run => (run.italic ? `/${run.text}/` : run.text)).join('')
+    const drawn = (text: string) => (layout(text, 200)[0] ?? []).map(run => (run.italic ? `/${run.text}/` : run.text)).join('')
 
     test('an underscore marks italics as a star does, and neither mark is drawn', () => {
       expect(drawn('Retry _only_ on ARM, where the *only* step runs _at most once_.')).toBe('Retry /only/ on ARM, where the /only/ step runs /at most once/.')
@@ -605,10 +605,40 @@ describe('layout', () => {
       expect(link).toMatchObject({ text: 'https://x.invalid/a_b', href: 'https://x.invalid/a_b', italic: true })
     })
 
-    test('while a stretch grows or shrinks, a mark that has met no closing mark is not drawn, and what follows it is italic', () => {
-      expect(drawn('Short, with _at most', true)).toBe('Short, with /at most/')
-      expect(drawn('Short, with _at most')).toBe('Short, with _at most')
+    test('a mark is read by the characters drawn beside it, passing over a pressable phrase\'s frame', () => {
+      const word = link('open', 'k', 'word')
+      const runs = layout(`${word}_x_ and _${word}_y_`, 200)[0] ?? []
+      expect(runs.map(run => run.text).join('')).toBe('word_x_ and word_y')
+      expect(runs.filter(run => run.italic).map(run => run.text)).toEqual(['word', '_y'])
+      expect(runs.filter(run => run.link).map(run => run.text)).toEqual(['word', 'word'])
     })
+
+    test('a letter that takes two code units is a letter beside an underscore', () => {
+      for (const names of ['𝑥_a_', '_a_𝑥']) expect(drawn(names)).toBe(names)
+    })
+
+    test('an arriving mark that has met no closing mark is not drawn, and the arriving text after it is italic', () => {
+      expect(drawn(`Short, with ${asArriving('_at most')}`)).toBe('Short, with /at most/')
+      expect(drawn(`Short, with ${asArriving('_at most')} and the rest.`)).toBe('Short, with /at most/ and the rest.')
+    })
+
+    test('an unpaired mark in text already drawn stays text next to arriving text', () => {
+      expect(drawn(`Keep _id, then ${asArriving('*two more')}`)).toBe('Keep _id, then /two more/')
+    })
+
+    test('a rule or a fence line is left bare by the arriving marks, so it is still read as one', () => {
+      expect(asArriving(['a', '---', '```ts', 'b', '```'].join('\n')).split('\n').map(line => /^[\ufdd5]/.test(line))).toEqual([true, false, false, true, false])
+    })
+
+    // The mark stands in a word the short form holds too, or apart from any word, as in text without spaces.
+    for (const [short, long] of [['Use the cache.', 'Use _the cache for every build_.'], ['缓存。', '使用*缓存和索引*加速。']] as const) {
+      test(`no frame of ${long} growing from ${short} draws its opening mark before its closing one`, () => {
+        for (let step = 0; step < 20; step += 1) {
+          const frame = (layout(asArriving(grow(short, parse(long), step / 20, () => '')), 200)[0] ?? []).map(run => run.text).join('')
+          expect(frame).not.toMatch(/[*_]/)
+        }
+      })
+    }
   })
 
   test('a code span or a link label tinted word by word draws whole, and the tint ends where its words do', async () => {
@@ -808,20 +838,22 @@ test('half a code span drawn by a growing long form never draws the marks of a l
   for (let frame = 0; frame < 120; frame += 1) {
     await ui.advance(16)
     const shown = await textIn(ui)
-    expect(shown).not.toMatch(/[\ufdd0-\ufdd4]/)
+    expect(shown).not.toMatch(/[\ufdd0-\ufdd6]/)
   }
   expect(await textIn(ui)).toBe('Run npm run test:unit -- --watch once. « Then merge main.')
   await ui.unmount()
 })
 
-test('underscore italics in a long form are drawn italic, and no frame of its growth draws an underscore', async $ => {
-  const ui = await mountReply($, FULLSCREEN, '{{Short.|Short, with an _emphasised_ word and _two more_ here.}}')
+test('underscore italics in a long form grow without their marks, and an unpaired mark already drawn stays as it is', async $ => {
+  const ui = await mountReply($, FULLSCREEN, 'Keep _id. {{Short.|Short, with an _emphasised_ word and _two more_ here.}}')
   await pressOn(ui, 'Short.')
   for (let frame = 0; frame < 120; frame += 1) {
     await ui.advance(16)
-    expect(await textIn(ui)).not.toContain('_')
+    const shown = await textIn(ui)
+    expect(shown.startsWith('Keep _id. ')).toBe(true)
+    expect(shown.slice('Keep _id. '.length)).not.toContain('_')
   }
-  expect(await textIn(ui)).toBe('Short, with an emphasised word and two more here. «')
+  expect(await textIn(ui)).toBe('Keep _id. Short, with an emphasised word and two more here. «')
   const italic = (await ui.findAll({ type: 'Text', in: FIRST })).filter(piece => piece.props.italic === true).map(piece => piece.text)
   expect(italic).toEqual(['emphasised', 'two more'])
   await ui.unmount()
