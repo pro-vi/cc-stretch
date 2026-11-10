@@ -46,6 +46,23 @@ the session, runs steps that pass or fail on what the screen shows, writes every
 into `<outDir>`, and exits 1 if a step failed; `node film/e2e/render.mjs <outDir>` turns them into
 `check.mp4`.
 
+A session needs no window. As of WezTerm 20260905-195314-b99b1ca2 this starts a server with no
+window, which reads none of the person's WezTerm config:
+
+```sh
+wezterm-mux-server -n --config 'unix_domains={{name="e2e",socket_path="<socket>"}}' \
+  --config initial_cols=150 --config initial_rows=60
+```
+
+`wezterm cli` talks to it when `WEZTERM_UNIX_SOCKET` is `<socket>` and `WEZTERM_PANE` is `0`, and
+`openPane` then drives its panes as it does a window's (checked with Claude Code 2.1.322).
+
+To check a light screen, have the pane's command write OSC 11 with a light colour
+(`printf '\033]11;#ffffff\007'`) before it starts the session: as of that WezTerm, the pane then
+reports that background when asked. As of Claude Code 2.1.322 a session with `"theme":"auto"` added
+to its `--settings` JSON draws the light theme there, and its dim grey says which theme it took:
+`rgb(102,102,102)` on light, `rgb(153,153,153)` on dark.
+
 ## Features
 
 ### Open and close a stretch
@@ -58,6 +75,21 @@ into `<outDir>`, and exits 1 if a step failed; `node film/e2e/render.mjs <outDir
 - **Writes:** nothing.
 - **Gotchas:** with `CLAUDE_CODE_NO_FLICKER=0` the session draws on the main screen, where every
   stretch is drawn open and nothing is pressable.
+
+### The colours of an opened stretch
+
+- **Reach:** a reply with two stretches in one paragraph, opened one after the other, with `theme`
+  added to the session's `--settings` JSON. As of Claude Code 2.1.322 the same JSON gives a
+  `--plugin-dir` session its `palette` option, under `pluginConfigs` and keyed as the style
+  toolbar's save writes it: `{"cc-stretch@inline":{"options":{"palette":"light"}}}`.
+- **Drive:**
+  1. Theme `auto`: the added words are the theme's own `warning` then `autoAccept`, and the first
+     does not fade. On a light screen they are `rgb(150,108,30)` then `rgb(135,0,255)`, on a dark
+     one `rgb(255,193,7)` then `rgb(175,135,255)`.
+  2. Theme `auto` on a light screen with `palette` `light`: `rgb(83,59,17)` then `rgb(74,0,140)`,
+     and the first fades to `rgb(143,128,100)` once the second is open.
+- **Writes:** nothing.
+- **Gotchas:** no check in `film/e2e/` drives these steps.
 
 ### Select text in a paragraph that holds a stretch
 
@@ -124,7 +156,8 @@ into `<outDir>`, and exits 1 if a step failed; `node film/e2e/render.mjs <outDir
   3. Press `colour`: nine deep swatches appear on the highlight row. Press one: every closed stretch
      sits on it, its text turned light.
   4. Press `tinted`: the swatches go, and each closed stretch sits on the colour its words take once
-     open, by its place in the reply. Open one: its words and its `«` are in that colour.
+     open, by its place in the reply. Open one: under a theme setting that names light or dark, its
+     words and its `«` are in that colour.
   5. Press `reset`: back to the saved style.
   6. Press `save`: the marks row reads `saving` until Claude Code prints that the plugin reloaded;
      then the toolbar shows the saved style with nothing to save.
@@ -142,3 +175,5 @@ into `<outDir>`, and exits 1 if a step failed; `node film/e2e/render.mjs <outDir
     what save writes, so after the reload it shows the default style.
   - The checks start from the default style: a `cc-stretch@inline` entry already in the user's
     settings fails their first step.
+  - The checks set no theme, and `film/e2e/tinted.mjs` expects the dark palette's colours: under a
+    theme setting whose name does not start with `dark`, its step that opens a stretch fails.

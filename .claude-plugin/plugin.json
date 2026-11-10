@@ -19,7 +19,7 @@
     "palette": {
       "type": "string",
       "title": "Stretch colours",
-      "description": "Which colours the words an opened stretch adds, and the tinted highlight, are drawn in: light for a light screen, dark for a dark one, in any case. Empty, or anything else, follows the theme setting, where only a theme whose name starts with light reads as light, so auto reads as dark.",
+      "description": "Which colours the words an opened stretch adds, and the tinted highlight, are drawn in: light for a light screen, dark for a dark one, in any case. Empty, or anything else, follows the theme setting: a light or dark theme names its palette. Under any other, such as auto, the words take the theme's own colours and the tinted highlight stays dark.",
       "default": ""
     }
   }

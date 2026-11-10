@@ -5,7 +5,7 @@ import { ALT_DOWN } from '../recorder.mjs';
 import { DEEP, LIGHT_TEXT, TINTS, startCheck } from './live.mjs';
 
 const [PLUGIN, OUT] = process.argv.slice(2);
-// The colour each place's words take once open, on the dark theme.
+// The colour each place's words take once open, in the dark palette: the session's theme setting must name it.
 const SOFT = ['rgb(255,221,119)', 'rgb(211,189,255)', 'rgb(154,197,192)', 'rgb(233,180,163)'];
 const QUESTION = 'In two short paragraphs with two stretches in each, why does a build cache miss? No links, lists or code.';
 

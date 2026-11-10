@@ -24,9 +24,11 @@ const FULLSCREEN = { columns: 100, rows: 40, isFullscreen: true }
 const MAIN_SCREEN = { columns: 100, rows: 40, isFullscreen: false }
 const HREF = 'https://cc-stretch.invalid/'
 const FIRST = 'paragraph-0'
-// The dark theme's colours for a closed stretch's tinted highlight, and for the words it adds once open, by place.
+// The dark palette's colours for a closed stretch's tinted highlight, and for the words it adds once open, by place.
 const DEEP = ['#403002', '#2c2240', '#122623', '#361e16'] as const
 const SOFT = ['#ffdd77', '#d3bdff', '#9ac5c0', '#e9b4a3'] as const
+/** The theme row of the settings menu, as `config.list` gives it, holding the setting `value`. */
+const themeRow = (value: string) => ({ key: 'theme', label: 'Theme', kind: 'choice', value, provider: { plugin: 'engine', tier: 'core' }, isLocked: false }) as const
 const COMPOSE = {
   model: 'claude-opus-5-5',
   promptModel: 'claude-opus-5-5',
@@ -66,6 +68,9 @@ const rowsOf = async (ui: Mounted, key = FIRST): Promise<string[]> => {
   return (Array.isArray(children) ? children.flat(Infinity) : [children]).map(textOf)
 }
 const textIn = async (ui: Mounted, key = FIRST) => (await rowsOf(ui, key)).join('\n')
+/** The colour of each Text a paragraph's Client draws that reads `text`, spaces around it aside, in reading order. */
+const coloursOf = async (ui: Mounted, text: string, key = FIRST) =>
+  (await ui.findAll({ type: 'Text', in: key })).filter(piece => piece.text?.trim() === text).map(piece => piece.props.color)
 
 /** Presses `phrase` where the Client drew it, as a mouse does: down, then up. The last one when `last`. */
 const pressOn = async (ui: Mounted, phrase: string, { key = FIRST, last = false } = {}) => {
@@ -1176,6 +1181,7 @@ test('the words a stretch adds take its colour, faded once another opens or the 
   const text = 'One {{cat|cat, black,}} and {{dog|dog, brown,}} here.'
   on('session.messages', () => ({ value: [{ role: 'assistant', text, toolUses: [] }] }))
   on('prompt.submit', (_, e) => ({ text: e.text, context: e.context }))
+  on('config.list', () => ({ value: [themeRow('dark')] }))
   const ui = await mountReply($, FULLSCREEN, text)
   const colourOf = async (text: string) => (await ui.findAll({ type: 'Text', in: FIRST })).find(piece => piece.text?.trim() === text)?.props.color
   await pressOn(ui, 'cat')
@@ -1196,6 +1202,40 @@ test('the words a stretch adds take its colour, faded once another opens or the 
   expect(await colourOf('brown,')).toBe('#897ba6')
   await ui.unmount()
 })
+
+// As of Claude Code 2.1.322 the theme row holds the setting, so none of these says whether the screen is
+// light or dark; undefined leaves `config.list` unanswered, which fails the read. The custom theme's
+// name holds `light` without starting with it.
+for (const [name, rows] of [
+  ['the auto theme', [themeRow('auto')]],
+  ['a custom theme', [themeRow('custom:light-paper')]],
+  ['no theme row', []],
+  ['a settings list that fails', undefined],
+] as const) {
+  test(`under ${name} the words a stretch adds take the theme's own colours by key, and none fades`, async ($, on) => {
+    if (rows !== undefined) on('config.list', () => ({ value: [...rows] }))
+    const ui = await mountReply($, FULLSCREEN, 'One {{cat|cat, black,}} and {{dog|dog, brown,}} here.')
+    await pressOn(ui, 'cat')
+    await ui.advance(2000)
+    await pressOn(ui, 'dog')
+    await ui.advance(2000)
+    expect(await coloursOf(ui, 'black,')).toEqual(['warning'])
+    expect(await coloursOf(ui, 'brown,')).toEqual(['autoAccept'])
+    expect(await coloursOf(ui, '«')).toEqual(['warning', 'autoAccept'])
+    await ui.unmount()
+  })
+}
+
+for (const [theme, colour] of [['dark-daltonized', SOFT[0]], ['light-ansi', '#533b11']] as const) {
+  test(`the ${theme} theme names its palette by how its name starts`, async ($, on) => {
+    on('config.list', () => ({ value: [themeRow(theme)] }))
+    const ui = await mountReply($, FULLSCREEN, 'One {{cat|cat, black,}} here.')
+    await pressOn(ui, 'cat')
+    await ui.advance(2000)
+    expect(await coloursOf(ui, 'black,')).toEqual([colour])
+    await ui.unmount()
+  })
+}
 
 test('a short form written over several lines is drawn open in the terminal too', async $ => {
   const ui = await mountReply($, FULLSCREEN, ['Two steps: {{- one', '- two|- one, first', '- two, second}}'].join('\n'))
@@ -1920,12 +1960,13 @@ describe('style', () => {
     await ui.unmount()
   })
 
-  test('an opened stretch keeps its tint under a style with dim and a highlight', { options: { marks: 'bold,dim', highlight: '#264f78' } }, async $ => {
+  test('an opened stretch keeps its tint under a style with dim and a highlight', { options: { marks: 'bold,dim', highlight: '#264f78' } }, async ($, on) => {
+    on('config.list', () => ({ value: [themeRow('dark')] }))
     const ui = await mountReply($, FULLSCREEN)
     await pressOn(ui, 'on a stale cache')
     await ui.advance(2000)
     const closer = (await ui.findAll({ type: 'Text', in: FIRST })).find(piece => piece.text === '«')?.props
-    expect(closer?.color).toMatch(/^#/)
+    expect(closer?.color).toBe(SOFT[0])
     expect(closer).not.toHaveProperty('backgroundColor')
     expect(closer).not.toHaveProperty('dimColor')
     expect(closer).toMatchObject({ bold: true })
@@ -1959,7 +2000,8 @@ describe('style', () => {
       await ui.unmount()
     })
 
-    test('an opened stretch takes the colour of its place, not of the order it was opened in', { options: { highlight: 'tinted' } }, async $ => {
+    test('an opened stretch takes the colour of its place, not of the order it was opened in', { options: { highlight: 'tinted' } }, async ($, on) => {
+      on('config.list', () => ({ value: [themeRow('dark')] }))
       const ui = await mountReply($, FULLSCREEN, 'A {{one|one more}} and {{two|two more}}.')
       await pressOn(ui, 'two')
       await ui.advance(2000)
@@ -1987,19 +2029,25 @@ describe('style', () => {
     })
 
     test('on the light theme each closed stretch is highlighted pale, its text dark', { options: { highlight: 'tinted' } }, async ($, on) => {
-      const theme = { key: 'theme', label: 'Theme', kind: 'choice', value: 'light', provider: { plugin: 'engine', tier: 'core' }, isLocked: false } as const
-      on('config.list', () => ({ value: [theme] }))
+      on('config.list', () => ({ value: [themeRow('light')] }))
       const ui = await mountReply($, FULLSCREEN, 'A {{one|one more}} and {{two|two more}}.')
       expect(await phraseProps(ui, 'one')).toMatchObject({ backgroundColor: '#e5dac7', color: '#1c1c1c' })
       expect(await backgroundOf(ui, 'two')).toBe('#e1bfff')
       await ui.unmount()
     })
 
-    const AUTO = { key: 'theme', label: 'Theme', kind: 'choice', value: 'auto', provider: { plugin: 'engine', tier: 'core' }, isLocked: false } as const
-    const LIGHT = { ...AUTO, value: 'light' } as const
+    test('under the auto theme each closed stretch keeps the dark palette\'s highlight, and an opened one\'s words take the theme\'s own colour of its place', { options: { highlight: 'tinted' } }, async ($, on) => {
+      on('config.list', () => ({ value: [themeRow('auto')] }))
+      const ui = await mountReply($, FULLSCREEN, 'A {{one|one more}} and {{two|two more}}.')
+      expect(await phraseProps(ui, 'one')).toMatchObject({ backgroundColor: DEEP[0], color: '#f2f2f2' })
+      await pressOn(ui, 'two')
+      await ui.advance(2000)
+      expect(await coloursOf(ui, 'more')).toEqual(['autoAccept'])
+      await ui.unmount()
+    })
 
     test('palette light draws the light theme\'s colours under the auto theme, in any case', { options: { highlight: 'tinted', palette: ' Light ' } }, async ($, on) => {
-      on('config.list', () => ({ value: [AUTO] }))
+      on('config.list', () => ({ value: [themeRow('auto')] }))
       const ui = await mountReply($, FULLSCREEN, 'A {{one|one more}} and {{two|two more}}.')
       expect(await phraseProps(ui, 'one')).toMatchObject({ backgroundColor: '#e5dac7', color: '#1c1c1c' })
       await pressOn(ui, 'two')
@@ -2010,14 +2058,14 @@ describe('style', () => {
     })
 
     test('palette dark keeps the dark theme\'s colours under the light theme', { options: { highlight: 'tinted', palette: 'dark' } }, async ($, on) => {
-      on('config.list', () => ({ value: [LIGHT] }))
+      on('config.list', () => ({ value: [themeRow('light')] }))
       const ui = await mountReply($, FULLSCREEN, 'A {{one|one more}} and {{two|two more}}.')
       expect(await backgroundOf(ui, 'one')).toBe(DEEP[0])
       await ui.unmount()
     })
 
     test('a palette that names neither light nor dark follows the theme setting', { options: { highlight: 'tinted', palette: 'solarized' } }, async ($, on) => {
-      on('config.list', () => ({ value: [LIGHT] }))
+      on('config.list', () => ({ value: [themeRow('light')] }))
       const ui = await mountReply($, FULLSCREEN, 'A {{one|one more}} and {{two|two more}}.')
       expect(await backgroundOf(ui, 'one')).toBe('#e5dac7')
       await ui.unmount()

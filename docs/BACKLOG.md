@@ -15,7 +15,7 @@ Checkbox marks a ticket consumed (plan written, or direct commit landed).
 - [ ] **replay-counts-recomputed** — published replay counts follow the current measurement · verdict: defer · signal: none · promote when: a change to what the skim counts
 - [ ] **nested-key-separator** — no two stretches in a reply share a key · verdict: defer · signal: none · promote when: a stretch opens a different one, or opens in its holder's colour
 - [ ] **old-replies-live** — on Claude Code 2.1.300, a reply from before a style save keeps its stretches · verdict: pending · needs: a live session on Claude Code 2.1.299 or 2.1.300
-- [ ] **theme-read** — stretch colours follow the theme the screen shows · verdict: defer · signal: none · promote when: a reader on a light screen reports dark highlights
+- [ ] **theme-read** — under `auto` or a custom theme, the tinted highlight follows the screen and a stretch opened earlier fades · verdict: defer · signal: none · promote when: Claude Code gives a plugin the theme the screen shows, or a reader under `auto` on a light screen reports dark highlights
 - [ ] **tinted-256** — the four tinted highlights stay four colours on a 256-colour terminal · verdict: defer · signal: none · promote when: a reader reports two tinted stretches in one colour
 - [ ] **tinted-neighbours** — stretches side by side on screen differ in tinted colour · verdict: pending · needs: a design call on whether neighbours on screen must differ
 - [ ] **open-colour-gap** — opened words are in their colour from their first frame · verdict: defer · signal: none · promote when: the gap shows in a recorded take
@@ -41,6 +41,7 @@ Checkbox marks a ticket consumed (plan written, or direct commit landed).
 - [ ] **copy-on-select** — the plugin's selection copies when Claude Code's own would · verdict: pending · needs: a design call on whether a drag or double-click in a paragraph the plugin draws follows "Copy on select"
 - [ ] **windows-link-opener** — on Windows a ctrl- or alt-click on a link in a paragraph that holds a stretch opens it · verdict: pending · needs: a live session on Windows
 - [ ] **desktop-before-2.1.300** — the desktop app on a bundled Claude Code before 2.1.300 shows stretches with 0.5.3 · verdict: pending · needs: a look at the desktop app while it bundles 2.1.295 or 2.1.299
+- [ ] **live-checks-theme** — the live checks pass whatever theme the person has set · verdict: direct
 
 ## plugin-folder
 
@@ -149,22 +150,24 @@ shows its stretches after the save.
 
 ## theme-read
 
-- Problem: `isLight` in `hooks/register.tsx` reads the `theme` row from `$.config.list` and takes
-  any value that does not start with `light` as dark. As of Claude Code 2.1.302 the row holds the
-  setting, so `auto` reads as `auto`, not as the theme it resolves to.
-- Failure sequence: theme `auto` on a light screen, a `custom:<name>` theme, a theme row another
-  plugin hides, or a list that fails. Under tinted, closed stretches sit on the dark palette's
-  near-black highlights (`#403002`, `#2c2240`, `#122623`, `#361e16`), readable with light text but
-  not the pale ones meant for a light screen. Opened words take the dark palette's colours on white,
-  at 1.3–1.9:1 contrast, as they did before 0.5.0.
+- Problem: as of Claude Code 2.1.322 the `theme` row from `$.config.list` holds the setting, and the
+  plugin API has no call for the theme the screen shows. Under a setting that names neither light
+  nor dark (`auto`, a `custom:<name>` theme, a theme row another plugin hides, a list that fails)
+  the hooks module cannot pick a palette, unless the `palette` setting names one
+  ([#24](https://github.com/pro-vi/cc-stretch/issues/24)).
+- Failure sequence: theme `auto` on a light screen, with the tinted highlight. Closed stretches sit
+  on the dark palette's near-black highlights (`#403002`, `#2c2240`, `#122623`, `#361e16`), readable
+  with light text but not the pale ones meant for a light screen. On either screen the opened words
+  are as the README's "Colours for your screen" says: the theme's own colours, none of them faded.
 - The read runs on every draw of a reply that is tinted or has an open stretch. A theme change is
   not one of the render hook's triggers, so a reply keeps its palette until it redraws for another
   reason, and two replies can show two palettes. The read's cost per draw is unmeasured.
 - Signal: none.
-- Promote when: a reader on a light screen reports dark highlights.
-- Fix shape: classify the value explicitly (`light*`, `dark*`, and a stated choice for `auto`,
-  `custom:*` and no row), with tests for a light row, an `auto` row and a failed list. Whether the
-  read can leave the draw depends on Claude Code telling a plugin the theme changed; unchecked.
+- Promote when: Claude Code gives a plugin the theme the screen shows, or a reader under `auto` on
+  a light screen reports dark highlights.
+- Fix shape: none until a plugin can read the theme the screen shows; then the palette follows it.
+  Whether the read can leave the draw depends on Claude Code telling a plugin the theme changed;
+  unchecked.
 
 ## tinted-256
 
@@ -450,3 +453,13 @@ the live check runs on macOS, so neither the choice nor the command has run on W
 From 0.5.3 the hooks module loads in Claude Code 2.1.293 and 2.1.295, checked with `claude -p`
 ([#17](https://github.com/pro-vi/cc-stretch/issues/17)). Whether the desktop app with such a
 version then shows stretches is not checked; `desktop-first-request` holds one reason it might not.
+
+## live-checks-theme
+
+The checks in `film/e2e/` start each session under the person's own theme setting and compare
+colours with fixed values. `SOFT` in `film/e2e/tinted.mjs` holds the dark palette's, so since opened
+words take the theme's own colours under a setting that names no palette, its step that opens a
+stretch fails under `auto`. `LINK_FG` in `film/e2e/live.mjs` is `rgb(153,204,255)`, which Claude Code
+2.1.322 draws for `suggestion` under `dark-daltonized`; under `dark` it draws `rgb(177,185,249)`. Fix
+shape: add one `theme` to the `--settings` JSON `live.mjs` starts every session with, and write each
+expected colour for that theme.

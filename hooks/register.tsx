@@ -40,12 +40,13 @@ const MAIN_SCREEN_NOTE =
   "cc-stretch: stretches are open because this session is on Claude Code's main screen, where a printed reply cannot change. " +
   `For clickable stretches, ${FULLSCREEN_HOW}`
 
-// The words a stretch adds are drawn in Claude Code's own theme colours (its 2.1.300 values for
-// warning, autoAccept, planMode and claude), mixed 45% toward the text colour so they tint rather
-// than shout. Each open stretch keeps its colour; all but the newest take a faded form of it, mixed
-// 35% toward the background, quieter but still that colour. In the tinted highlight a closed stretch
-// sits on the same theme colour mixed 75% toward the background, deep on the dark theme and pale on the
-// light one; on both, the text contrastOn picks reads at 10:1 or more.
+// Where the palette setting or the theme setting names a palette, the words a stretch adds are drawn
+// in Claude Code's own theme colours (its 2.1.300 values for warning, autoAccept, planMode and
+// claude), mixed 45% toward the text colour so they tint rather than shout. Each open stretch keeps
+// its colour; all but the newest take a faded form of it, mixed 35% toward the background, quieter
+// but still that colour. In the tinted highlight a closed stretch sits on the same theme colour mixed
+// 75% toward the background, deep on the dark theme and pale on the light one; on both, the text
+// contrastOn picks reads at 10:1 or more. Where neither setting names a palette, THEME_COLOURS below.
 const BASE: Record<'dark' | 'light', readonly [Rgb, Rgb, Rgb, Rgb]> = {
   dark: [[255, 193, 7], [175, 135, 255], [72, 150, 140], [215, 119, 87]],
   light: [[150, 108, 30], [135, 0, 255], [0, 102, 102], [215, 119, 87]],
@@ -66,8 +67,24 @@ const forcedPaletteOf = (value: unknown): keyof typeof PALETTES | '' => {
   const name = typeof value === 'string' ? value.trim().toLowerCase() : ''
   return name === 'light' || name === 'dark' ? name : ''
 }
+/**
+ * The palette Claude Code's theme setting names by how its name starts, or '' when it names neither:
+ * `auto`, a custom theme, no theme row, or a settings list that fails. As of Claude Code 2.1.322 a
+ * plugin reads the setting, not the theme the screen shows, so under those it cannot tell a light
+ * screen from a dark one.
+ */
+async function themePaletteOf($: EngineInterface): Promise<keyof typeof PALETTES | ''> {
+  const theme = String((await $.config.list().catch(() => [])).find(row => row.key === 'theme')?.value)
+  return theme.startsWith('light') ? 'light' : theme.startsWith('dark') ? 'dark' : ''
+}
 /** How many colours stretches take in turn. */
 const HUES = BASE.dark.length
+/**
+ * The colours an open stretch's words take where no palette is named: the theme's own, by their keys
+ * in BASE's order, which as of Claude Code 2.1.322 it draws for the theme the screen shows. A key
+ * cannot be mixed, so there no open stretch fades.
+ */
+const THEME_COLOURS = (['warning', 'autoAccept', 'planMode', 'claude'] as const satisfies { length: typeof HUES }).map(key => ({ soft: key, faded: key }))
 /** `count`, or the next count when `count` would give the colour of the stretch holding it, whose count is `parent`. */
 const hueAfter = (count: number, parent: number | undefined) => (parent !== undefined && count % HUES === parent % HUES ? count + 1 : count)
 /** The colours (a palette entry) a count or a place picks, taken in turn. */
@@ -481,14 +498,13 @@ export const register: Register = (on, options) => {
       const look = storedLook(picked) ?? baseLook
       const isTinted = look.highlight === TINTED
       // The theme matters only once a stretch in this reply is drawn in its colour: open, or with the tinted highlight.
-      // The palette setting, when it names one, wins: as of Claude Code 2.1.319 the theme row holds the
-      // setting, so `auto` reads as `auto` and not as the theme the screen shows.
-      const isLight =
-        (isTinted || Object.keys(order).length > 0) &&
-        (forcedPalette !== ''
-          ? forcedPalette === 'light'
-          : (await $.config.list().catch(() => [])).some(row => row.key === 'theme' && String(row.value).startsWith('light')))
-      const palette = isLight ? PALETTES.light : PALETTES.dark
+      const isColoured = isTinted || Object.keys(order).length > 0
+      // The palette setting, when it names one, wins over the theme setting.
+      const named = forcedPalette !== '' ? forcedPalette : isColoured ? await themePaletteOf($) : ''
+      // Where neither names a palette, the words take the theme's own colours. A highlight there stays
+      // the dark palette's: its text is picked to read on it, whatever the screen.
+      const palette = PALETTES[named === '' ? 'dark' : named]
+      const wordColours = named === '' ? THEME_COLOURS : palette
       const paragraphs = paragraphsOf(text).map((paragraph, i) => ({ ...paragraph, key: `paragraph-${i}`, member: `${e.requestId}#paragraph-${i}` }))
       const holding = paragraphs.filter(p => p.hasStretch)
       const places = isTinted ? placesOf(holding) : undefined
@@ -501,7 +517,7 @@ export const register: Register = (on, options) => {
           if (!hasStretch) return <Markdown text={text} />
           const [open, ask] = await Promise.all([read($, memberOf(openStretches, { requestId: member })), read($, memberOf(askedStretch, { requestId: member }))])
           const placed = places?.get(key)
-          const tints = tintsOf(order, key, newest === e.requestId ? count - 1 : -1, palette, placed)
+          const tints = tintsOf(order, key, newest === e.requestId ? count - 1 : -1, wordColours, placed)
           const keys = Object.fromEntries((shown?.targets ?? []).filter(one => one.member === member).map(one => [one.key, one.letter]))
           const props: ReplyProps = {
             text,
