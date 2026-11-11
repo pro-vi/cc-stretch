@@ -1,20 +1,23 @@
-// Drives the guide bench through its run-folder cases with the stand-in `claude` in this folder, so
-// they are checked without a model call. Exits 1 on the first case that does not hold.
+// Drives the guide bench through its run-folder cases with the stand-in `claude` in this folder, and
+// live.ts through transcripts written here, so they are checked without a model call. Exits 1 if a
+// case did not hold.
 //   bun bench/stub/check.ts
 import { spawnSync } from 'node:child_process'
 import { createHash } from 'node:crypto'
 import { appendFileSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
+import { GUIDE } from '../../hooks/guide.ts'
 import { readManifest } from '../manifest.ts'
 
 const STUB = new URL('.', import.meta.url).pathname
 const AB = new URL('../ab.ts', import.meta.url).pathname
+const LIVE = new URL('../live.ts', import.meta.url).pathname
 const scratch = mkdtempSync(join(tmpdir(), 'cc-stretch-bench-check-'))
 
-/** Runs the bench with the stand-in first on PATH; returns its exit status and output. */
-function bench(args: string[], env: Record<string, string> = {}) {
-  const run = spawnSync('bun', [AB, ...args], { encoding: 'utf8', env: { ...process.env, ...env, PATH: `${STUB}:${process.env.PATH ?? ''}` } })
+/** Runs the bench, or another of its scripts, with the stand-in first on PATH; returns its exit status and output. */
+function bench(args: string[], env: Record<string, string> = {}, script = AB) {
+  const run = spawnSync('bun', [script, ...args], { encoding: 'utf8', env: { ...process.env, ...env, PATH: `${STUB}:${process.env.PATH ?? ''}` } })
   return { status: run.status, output: `${run.stdout}${run.stderr}` }
 }
 const tasks = (out: string, arm = 'g0', env: Record<string, string> = {}, limit = ['--limit', '2'], concurrency = '4') =>
@@ -236,6 +239,56 @@ writeFileSync(rawCorpus, JSON.stringify({ id: 'one', project: 'sample', session:
 const rawRun = join(scratch, 'ungraded-rewrites')
 r = bench(['run', '--out', rawRun, '--corpus', rawCorpus, '--arm', 'g0', '--arm', 'shortened', '--repeats', '1', '--judge', 'none'], noJudge)
 check('generation-only rewriting skips point extraction and every judge', r.status === 0 && ok(rawRun, 'rewrites.jsonl') === 2 && !existsSync(join(rawRun, 'points.jsonl')) && !existsSync(join(rawRun, 'judged.jsonl')), r.output)
+
+// Live counts: transcripts written here as Claude Code 2.1.322 writes the rows live.ts reads, three
+// sessions under the plugin's guide and three under a guide on trial, each with two long replies.
+const TRIAL = GUIDE.replace('- Stretches nest:', '- Stretches may nest:')
+if (TRIAL === GUIDE) throw new Error('the guide on trial must differ from the plugin\'s')
+const trialFile = join(scratch, 'trial-guide.txt')
+writeFileSync(trialFile, `${TRIAL}\n`)
+const LONG = Array.from({ length: 150 }, (_, i) => `word${i}`).join(' ')
+const KEPT = `${LONG} {{The build fails.|The build fails on a stale cache.}}`
+const REWORDED = `${LONG} {{The build fails.|CI is broken by a stale cache.}}`
+const liveDir = join(scratch, 'live')
+mkdirSync(liveDir)
+/** Writes a session's transcript: its replies under `guide`, the first followed by a reading note that names its stretch as opened. */
+function transcript(name: string, guide: string, replies: string[], day: string, tail = '') {
+  const rows: unknown[] = [{ type: 'api-request-shape', shapeHash: 'shape-1', shape: { system: [{ type: 'text', text: 'You are Claude Code.' }, { type: 'text', text: `Be brief.\n\n${guide}\n\nOther instructions.` }] } }]
+  replies.forEach((reply, i) => {
+    rows.push({ type: 'user', origin: { kind: 'human' }, message: { role: 'user', content: 'What broke?' } })
+    if (i === 1) rows.push({ type: 'attachment', attachment: { type: 'hook_additional_context', content: ['Stretchtext: since your last reply the reader opened "The build fails.".'] } })
+    rows.push({ type: 'api-request', id: `request-${i}`, shapeHash: 'shape-1', params: { model: 'claude-opus-5-5' } })
+    rows.push({ type: 'assistant', requestRef: `request-${i}`, timestamp: `${day}T10:00:00.000Z`, message: { role: 'assistant', content: [{ type: 'text', text: reply }], usage: { input_tokens: 10 } } })
+  })
+  // A request body's row is never parsed, so what follows its opening may be anything.
+  const lines = [...rows.map(row => JSON.stringify(row)), '{"type":"api-request-blob", not JSON at all']
+  writeFileSync(join(liveDir, `${name}.jsonl`), `${lines.join('\n')}\n${tail}`)
+}
+for (const n of [1, 2, 3]) transcript(`shipped-${n}`, GUIDE, [REWORDED, n === 1 ? KEPT : REWORDED], n === 3 ? '2026-01-01' : '2026-01-05')
+// The last line of a session still being written is cut short, and is skipped.
+for (const n of [1, 2, 3]) transcript(`trial-${n}`, TRIAL, [KEPT, KEPT], '2026-01-05', n === 1 ? '{"type":"assis' : '')
+const liveFiles = readdirSync(liveDir).sort().map(name => join(liveDir, name))
+const live = (args: string[]) => bench(args, {}, LIVE)
+r = live(['--guide', `candidate=${trialFile}`, ...liveFiles])
+check(
+  'live counts name each guide, count its replies by session and print the difference with its interval',
+  r.status === 0 &&
+    r.output.includes('in 6 transcripts.') &&
+    r.output.includes('| | shipped | candidate |') &&
+    r.output.includes('| replies, in sessions | 6, in 3 | 6, in 3 |') &&
+    r.output.includes('| keeps-short-words | 5 of 6 (83%) | 0 of 6 (0%) |') &&
+    r.output.includes('| links the reader opened, of links in view, where a reading note followed | 3 of 3 (100%) | 3 of 3 (100%) |') &&
+    // Drawn again, the three shipped sessions break the rule in 3 to 6 of 6 replies, and all three draws land on the session with 1 of 2 once in 27.
+    r.output.includes('- keeps-short-words: -83 (-100 to -50)'),
+  r.output,
+)
+r = live(['--guide', `candidate=${trialFile}`, '--since', '2026-01-02', ...liveFiles])
+check('live counts leave out replies written before --since', r.status === 0 && r.output.includes('2 written earlier') && r.output.includes('| replies, in sessions | 4, in 2 | 6, in 3 |'), r.output)
+r = live(liveFiles)
+check('a guide no name was given for is counted as unnamed', r.status === 0 && r.output.includes('| | shipped | unnamed |'), r.output)
+const noDay = live(['--since', 'yesterday', ...liveFiles])
+const noFile = live(['--guide', `candidate=${join(scratch, 'no-such-guide.txt')}`, ...liveFiles])
+check('live counts refuse a --since that is no day and a --guide file that cannot be read', noDay.status === 1 && noDay.output.includes('YYYY-MM-DD') && noFile.status === 1 && noFile.output.includes('cannot read'), `${noDay.output}\n${noFile.output}`)
 
 console.log(failed === 0 ? `all cases hold (scratch: ${scratch})` : `${failed} cases failed (scratch: ${scratch})`)
 process.exit(failed === 0 ? 0 : 1)

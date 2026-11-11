@@ -1,0 +1,141 @@
+// What live replies show, in counts: the layout rules a reply breaks, what its links hide and what
+// the reader opened, then how often each happens under a guide and how two guides differ. Nothing
+// here calls a model or keeps a reply's text. live.ts reads transcripts into these counts.
+import { isOpenable, parse, stretches } from '../hooks/parse.ts'
+import type { Stretch } from '../hooks/parse.ts'
+import { draw, measure } from './measure.ts'
+import type { Measure } from './measure.ts'
+import { hiddenIn, RULES, verdictsOf } from './rules.ts'
+import type { RuleId } from './rules.ts'
+
+/** The words from which a reply counts as long: the bar depth.ts sets, taken here on the words with every stretch open. */
+const LONG_WORDS = 150
+/**
+ * The words under which a reply needs no stretch by the guide's last bullet: the bar replay.ts sets.
+ * No task says a live reply is short, so this stands in for it under `no-stretch-in-short-reply`.
+ */
+const SHORT_WORDS = 40
+
+/** One reply, counted: its words closed and open, and those the reader had read where a reading note followed. */
+export type Counted = Measure & {
+  session: string
+  /** Its stretches that can be opened, at any depth. */
+  stretches: number
+  /** The layout rules it breaks: those that need no task, and `no-stretch-in-short-reply` for a reply under SHORT_WORDS. */
+  broken: RuleId[]
+  /** Its links in view, and how many of them hide several sections or a list. */
+  inView: number
+  onSections: number
+  /** Where a reading note followed the reply: how many links in view the reader opened. */
+  opened?: number
+}
+
+export function counted(session: string, reply: string, opened?: ReadonlySet<string>): Counted {
+  const parts = parse(reply)
+  const inView: Stretch[] = []
+  draw(parts, new Set(), (link, drawn) => {
+    inView.push(link)
+    return drawn
+  })
+  const sizes = measure(reply, opened)
+  return {
+    session,
+    ...sizes,
+    stretches: stretches(parts).filter(isOpenable).length,
+    broken: verdictsOf(reply, sizes.full < SHORT_WORDS ? { needsNoStretch: true } : {}).filter(verdict => !verdict.holds).map(verdict => verdict.rule),
+    inView: inView.length,
+    onSections: inView.filter(link => hiddenIn(draw(link.long ?? [], 'all')) === 'sections').length,
+    ...(opened !== undefined && { opened: inView.filter(link => opened.has(link.short.trim())).length }),
+  }
+}
+
+/** Something a reply can get wrong: the replies it can happen in, and those it happens in. Its rate is the second over the first. */
+export type Failure = { name: string; applies: (reply: Counted) => boolean; hits: (reply: Counted) => boolean }
+
+const isLong = (reply: Counted) => reply.full >= LONG_WORDS
+const isStretched = (reply: Counted) => isLong(reply) && reply.stretches > 0
+const breaks = (rule: RuleId) => (reply: Counted) => reply.broken.includes(rule)
+
+export const FAILURES: readonly Failure[] = [
+  { name: 'a long reply holds no stretch', applies: isLong, hits: reply => reply.stretches === 0 },
+  // Every layout rule that needs no task, so a rule added to rules.ts is counted here too.
+  ...RULES.filter(rule => rule.appliesTo({})).map(({ id }): Failure => ({ name: id, applies: isStretched, hits: breaks(id) })),
+  { name: 'a link hides several sections or a list', applies: isStretched, hits: reply => reply.onSections > 0 },
+  { name: `a reply under ${SHORT_WORDS} words holds a stretch`, applies: reply => reply.full < SHORT_WORDS, hits: breaks('no-stretch-in-short-reply') },
+]
+
+/** How many of a session's replies a failure can happen in, and how many of those it happens in. */
+export type Tally = { hits: number; of: number }
+
+/** Each session's tally of `failure`, leaving out sessions with no reply it can happen in. */
+export function talliesOf(replies: readonly Counted[], failure: Failure): Tally[] {
+  const bySession = new Map<string, Tally>()
+  for (const reply of replies) {
+    if (!failure.applies(reply)) continue
+    const tally = bySession.get(reply.session) ?? { hits: 0, of: 0 }
+    bySession.set(reply.session, { hits: tally.hits + (failure.hits(reply) ? 1 : 0), of: tally.of + 1 })
+  }
+  return [...bySession.values()]
+}
+
+export const sum = (numbers: number[]) => numbers.reduce((a, b) => a + b, 0)
+
+/** Every session's tally, added up. */
+export const totalOf = (tallies: readonly Tally[]): Tally => ({ hits: sum(tallies.map(t => t.hits)), of: sum(tallies.map(t => t.of)) })
+
+/** A failure's rate over every session's tally; NaN for none. */
+export function rateOf(tallies: readonly Tally[]): number {
+  const { hits, of } = totalOf(tallies)
+  return hits / of
+}
+
+/** Numbers from 0 up to 1, the same ones on every run (mulberry32), so an interval can be worked out again. */
+function seeded(seed: number): () => number {
+  let state = seed
+  return () => {
+    state = (state + 0x6d2b79f5) | 0
+    let t = Math.imul(state ^ (state >>> 15), 1 | state)
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t
+    return ((t ^ (t >>> 14)) >>> 0) / 2 ** 32
+  }
+}
+
+/**
+ * `candidate`'s rate minus `base`'s, with the interval that holds 95% of the differences found when
+ * each guide's sessions are drawn again with replacement. Sessions are drawn, not replies: a
+ * session's replies follow one another's wording, so they are not separate observations. Undefined
+ * when either guide has no reply the failure can happen in.
+ */
+export function differenceOf(base: readonly Tally[], candidate: readonly Tally[], draws = 10_000): { difference: number; low: number; high: number } | undefined {
+  if (base.length === 0 || candidate.length === 0) return undefined
+  const random = seeded(1)
+  /** A guide's rate with its sessions drawn again: as many as it has, each draw any one of them. */
+  const again = (tallies: readonly Tally[]) => {
+    let hits = 0
+    let of = 0
+    for (let i = 0; i < tallies.length; i++) {
+      const drawn = tallies[Math.floor(random() * tallies.length)]
+      if (drawn === undefined) continue
+      hits += drawn.hits
+      of += drawn.of
+    }
+    return hits / of
+  }
+  const found = Array.from({ length: draws }, () => again(candidate) - again(base)).sort((a, b) => a - b)
+  const at = (share: number) => found[Math.min(found.length - 1, Math.floor(share * found.length))] ?? NaN
+
+  return { difference: rateOf(candidate) - rateOf(base), low: at(0.025), high: at(0.975) }
+}
+
+/**
+ * The guide a system prompt holds, by name: of the guides in `named` (name to text) whose text it
+ * holds, the longest, so a guide that only adds to another is not taken for it; `unnamed` for other
+ * text under `heading`; undefined for no guide.
+ */
+export function guideIn(system: string, named: ReadonlyMap<string, string>, heading: string): string | undefined {
+  let best: { name: string; length: number } | undefined
+  for (const [name, text] of named) {
+    if (text.length > (best?.length ?? 0) && system.includes(text)) best = { name, length: text.length }
+  }
+  return best?.name ?? (system.includes(heading) ? 'unnamed' : undefined)
+}

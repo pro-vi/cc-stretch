@@ -1,5 +1,6 @@
 import { describe, expect, test } from 'claude-code/testing'
 
+import { counted, differenceOf, FAILURES, guideIn, rateOf, talliesOf } from '../bench/counts.ts'
 import { measure, openedFrom, render, words } from '../bench/measure.ts'
 import { shortsNamed } from '../bench/opened.ts'
 import { growthOf } from '../hooks/grow.ts'
@@ -74,6 +75,65 @@ describe('benchmark measures', () => {
     // A note from before 0.5.2 names a stretch by its short form, which is never read as lead-in words.
     expect([...shortsNamed('The check {{exited 0|exited with code 0}}{{|, so no errors}}.', new Set(['exited 0']))]).toEqual(['exited 0'])
     expect([...shortsNamed('It merged {{.|, and passed.}}', new Set(['It merged .']))]).toEqual(['It merged .', '.'])
+  })
+})
+
+describe('live counts', () => {
+  const LONG = Array.from({ length: 150 }, (_, i) => `word${i}`).join(' ')
+  const KEPT = '{{The build fails.|The build fails on a stale cache.}}'
+  const REWORDED = '{{The build fails.|CI is broken by a stale cache.}}'
+  const SECTIONS = '{{Two findings.|Two findings.\n\n**One.** A.\n\n**Two.** B.}}'
+  const failureNamed = (name: string) => {
+    const found = FAILURES.find(failure => failure.name === name)
+    if (found === undefined) throw new Error(`no failure named ${name}`)
+    return found
+  }
+
+  test('a reply is counted by its words, its stretches, the rules it breaks, what its links hide and what the reader opened', async () => {
+    expect(counted('s', `${LONG} ${REWORDED}\n\n${SECTIONS}`, new Set(['Two findings.']))).toEqual({
+      session: 's', skim: 155, full: 163, stretches: 2, broken: ['keeps-short-words'], inView: 2, onSections: 1, opened: 1, read: 159,
+    })
+    expect(counted('s', 'git log --oneline -5')).toEqual({ session: 's', skim: 4, full: 4, stretches: 0, broken: [], inView: 0, onSections: 0 })
+    // A link inside a stretch drawn open, its short form being two lines, is in view too.
+    expect(counted('s', `{{Two\nlines|It {{merged|merged today}}.}}`).inView).toBe(1)
+  })
+
+  test('every layout rule that needs no task is counted, and a short reply by the rule for short replies', async () => {
+    expect(FAILURES.map(failure => failure.name)).toEqual([
+      'a long reply holds no stretch', 'keeps-short-words', 'short-form-inline', 'short-form-has-words', 'adds-words', 'not-in-heading-or-table',
+      'a link hides several sections or a list', 'a reply under 40 words holds a stretch',
+    ])
+    expect(counted('s', `Done. ${KEPT}`).broken).toEqual(['no-stretch-in-short-reply'])
+  })
+
+  test('a failure is counted only in the replies it can happen in, each session on its own', async () => {
+    const replies = [counted('a', `${LONG} ${REWORDED}`), counted('a', `${LONG} ${KEPT}`), counted('a', 'Short.'), counted('b', `${LONG} ${KEPT}`), counted('b', LONG), counted('c', `Done. ${KEPT}`)]
+    expect(talliesOf(replies, failureNamed('keeps-short-words'))).toEqual([{ hits: 1, of: 2 }, { hits: 0, of: 1 }])
+    expect(talliesOf(replies, failureNamed('a long reply holds no stretch'))).toEqual([{ hits: 0, of: 2 }, { hits: 1, of: 2 }])
+    expect(talliesOf(replies, failureNamed('a reply under 40 words holds a stretch'))).toEqual([{ hits: 0, of: 1 }, { hits: 1, of: 1 }])
+    expect(rateOf(talliesOf(replies, failureNamed('keeps-short-words')))).toBe(1 / 3)
+  })
+
+  test('two guides differ by their rates, with an interval drawn over sessions that is the same on every run', async () => {
+    const half = Array.from({ length: 6 }, () => ({ hits: 5, of: 10 }))
+    const none = Array.from({ length: 6 }, () => ({ hits: 0, of: 10 }))
+    expect(differenceOf(half, none)).toEqual({ difference: -0.5, low: -0.5, high: -0.5 })
+    // Where sessions differ, the interval is as wide as they make it: one bad session is no finding.
+    const uneven = [{ hits: 9, of: 10 }, { hits: 0, of: 10 }, { hits: 0, of: 10 }, { hits: 0, of: 10 }]
+    const spread = differenceOf(none, uneven, 2000)
+    if (spread === undefined) throw new Error('no difference')
+    expect([spread.difference, spread.low, spread.high > 0.4]).toEqual([0.225, 0, true])
+    expect(differenceOf(none, uneven, 2000)).toEqual(spread)
+    expect(differenceOf([], none)).toBe(undefined)
+  })
+
+  test('a recorded system prompt is named by the longest guide it holds, and one under the heading alone is unnamed', async () => {
+    const named = new Map([['shipped', '# Guide\n\nWrite stretches.'], ['candidate', '# Guide\n\nWrite stretches.\n\nKeep the words.']])
+    const around = (guide: string) => `You are Claude Code.\n\n${guide}\n\nOther instructions.`
+    expect(guideIn(around('# Guide\n\nWrite stretches.'), named, '# Guide')).toBe('shipped')
+    expect(guideIn(around('# Guide\n\nWrite stretches.\n\nKeep the words.'), named, '# Guide')).toBe('candidate')
+    expect(guideIn(around('# Guide\n\nAn older text.'), named, '# Guide')).toBe('unnamed')
+    expect(guideIn('You are Claude Code.', named, '# Guide')).toBe(undefined)
   })
 })
 
