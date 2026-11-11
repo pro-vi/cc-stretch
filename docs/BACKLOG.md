@@ -34,6 +34,7 @@ Checkbox marks a ticket consumed (plan written, or direct commit landed).
 - [ ] **post-pass-stretcher** — a hook turns Claude's finished plain reply into stretchtext · verdict: pending · needs: a live check that a `turn.step` rewrite is shown and recorded
 - [ ] **opened-from-doc** — `openedFrom`'s comment in `bench/measure.ts` describes the note as 0.5.2 writes it · verdict: defer · promote when: the next change to `bench/measure.ts`
 - [ ] **label-short-forms** — a short form over several sections states their gist, not their topic · verdict: defer · signal: none · promote when: a change with a mechanism none of the six tried shares
+- [ ] **live-label-count** — the live count says how many links are judged labels, by guide · verdict: pending · needs: a decision to put `series-copy` on a live trial
 - [ ] **closing-gist-kept** — the closing stretch's short form is in the block it opens · verdict: pending · needs: what the reader sees when such a stretch opens
 - [ ] **desktop-first-request** — the guide reaches the desktop app's first request · verdict: pending · needs: whether the desktop app's `ui_attach` arrives before its first request
 - [ ] **long-session-drift** — Claude keeps writing stretches deep in a long session · verdict: defer · signal: `node bench/depth.ts` on a reader's transcripts · promote when: its counts show long replies that were sent the guide going plain
@@ -400,6 +401,33 @@ the replay harness, which is not in the repo. Before relying on it:
 - Every guide line tried roughly doubled tool requests in replays (10 to 18 and 21 of 36; 13 to 29
   and 26 of 63); changes to the note did not (9 to 13 of 60). Replay a neutral line first, to see
   whether any edit to the system prompt does it.
+
+Measured on 2026-11-11 where none of the six aimed: links over one paragraph, whose short form is
+often the paragraph's opening line, a heading, a count or a sentence that announces what follows.
+The corpus was 26 live replies that had held such a label, every stretch opened and the text
+rewritten twice by each guide (Opus 5.5 at xhigh effort, Claude Code 2.1.322, `LABELS` judged by
+Sonnet). Links judged labels, the closing block's link left out:
+
+- `g0`: 58 of 329 in one run and 61 of 329 in a second.
+- `lead-in-outside`: 46 of 403.
+- `series-gist`: 22 of 291, and it broke `keeps-short-words` in 6 of 45 rewrites, against 2 of 50.
+- `series-copy`, the same line with `copy-then-add`'s: 34 of 417, and `keeps-short-words` broke in
+  6 of 52 rewrites, against 5 of 52. The closed reply held 26% of the words, against 16%, and
+  carried 80% of each reply's top three points, against 70%.
+
+`series-copy` then passed the 24 tasks as a guard: nothing happened only under it in 2 of 3 repeats
+of a task. There its closed replies were no longer than `g0`'s (3,892 words against 3,883 over 72
+answers). Not known: what it does in live sessions, where the writer has not seen the finished
+reply, and under models other than Opus 5.5.
+
+## live-label-count
+
+`bench/live.ts` counts what a reply's text alone decides, and a label needs the judge. A trial of a
+line that aims at labels is read on the share of links in view judged labels, so the count needs a
+judged pass over the trial's replies: `LABELS` from `bench/grading.ts`, the closing block's link
+left out, sessions drawn again for the interval as `differenceOf` does. On 52 live sessions whose
+links were judged (182 of 798 labels), a trial of 55 sessions a guide finds a fall to 0.44 of that
+share 94 times in 100, and a fall that is not there 2 times in 100.
 
 ## closing-gist-kept
 
