@@ -1,14 +1,14 @@
 import { atom, memberOf, read, update } from 'claude-code'
 import type { ClassicEventOf, ClassicResultOf, EngineInterface, Register, RenderInput, RenderNode, SessionMessage } from 'claude-code'
 
-import { GUIDE } from './guide'
+import { GUIDE, takesTrialGuide } from './guide'
 import { closeAfter, codeSpan, hideLongForms, isLinkable, isOpenable, KEY_SEPARATOR, newStreamState, paragraphsOf, parentOf, parse, stretches } from './parse'
 import type { Segment, StreamState, Stretch } from './parse'
 import { isWebLink, namesOf, openedOf, targetsIn } from './layout'
 import type { Action, OpenedStretch } from './layout'
 import { contrastOn, hex, mix } from './contrast'
 import type { Hex, Rgb } from './contrast'
-import { isColour, isSameLook, lookOf, MARK_NAMES, marksSetting, storedLook, TINTED } from './look'
+import { isColour, isSameLook, lookOf, MARK_NAMES, marksSetting, storedLook, textOf, TINTED } from './look'
 import type { DrawnLook, Highlight, Look, Mark } from './look'
 import type { ReplyPost, ReplyProps, Tint } from './reply'
 
@@ -27,6 +27,8 @@ const toolbarShown = atom({ plugin: 'cc-stretch', key: 'toolbar' } as const, fal
 const toolbarHolder = atom({ plugin: 'cc-stretch', key: 'busy' } as const, null)
 /** Plugin state for the same reason: a save can land while a reply streams, and its next flush continues from here. */
 const streamCheckpoints = atom({ plugin: 'cc-stretch', key: 'streams' } as const, {})
+/** Plugin state, so that a session's system prompt stays one text when the plugin reloads or the file on trial changes. */
+const sessionGuide = atom({ plugin: 'cc-stretch', key: 'guide' } as const, null)
 
 // The highlight colours the toolbar offers: deep colours, whose text turns light. A light highlight would draw
 // dark text on a light ground, as a selection does. No text colour is offered: links, code and the
@@ -301,8 +303,31 @@ async function follow($: EngineInterface, href: string): Promise<void> {
   if (!isOpened) $.ui.toast(`cc-stretch: could not open ${href}`)
 }
 
+/**
+ * The guide this session's requests carry: the plugin's own, or, for the half of the sessions their
+ * id picks, the text of the file the `trialGuide` setting names. Settled at the session's first
+ * request under the setting. Whatever fails leaves the plugin's own guide: no such file, an empty
+ * one, or a Claude Code whose plugins cannot read the session's id or a file (both can as of
+ * Claude Code 2.1.322).
+ */
+async function guideOf($: EngineInterface, file: string): Promise<string> {
+  if (file === '') return GUIDE
+  const settled = await read($, sessionGuide)
+  if (settled !== null) return settled
+  let guide = GUIDE
+  try {
+    if (takesTrialGuide(await $.session.id())) guide = (await $.fs.read(file)).trim() || GUIDE
+  } catch {
+    // The plugin's own guide stays.
+  }
+  await update($, sessionGuide, () => guide)
+
+  return guide
+}
+
 export const register: Register = (on, options) => {
   const baseLook = lookOf(options)
+  const trialGuide = textOf(options.trialGuide)
   const forcedPalette = forcedPaletteOf(options.palette)
   // As of Claude Code 2.1.302, /cc-stretch:style is listed from commands/style.md and answered here;
   // Claude reads the file only when the hooks did not answer. It only shows the toolbar: the band
@@ -417,7 +442,7 @@ export const register: Register = (on, options) => {
     return {
       sections: [
         ...composed.sections,
-        { id: 'cc-stretch:guide', text: GUIDE, scope: 'session' },
+        { id: 'cc-stretch:guide', text: await guideOf($, trialGuide), scope: 'session' },
       ],
     }
   })

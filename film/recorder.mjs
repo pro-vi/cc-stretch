@@ -13,6 +13,8 @@ import { firstCarriedRow, lettersOn, linksOn, parseScreen, plainRows, pressables
 
 const run = promisify(execFile);
 export const REPO = new URL('..', import.meta.url).pathname.replace(/\/$/, '');
+/** Where Claude Code keeps the person's settings and transcripts: the folder CLAUDE_CONFIG_DIR names, else ~/.claude. */
+export const CONFIG_DIR = process.env.CLAUDE_CONFIG_DIR ?? `${homedir()}/.claude`;
 export const sleep = (ms) => new Promise((done) => setTimeout(done, ms));
 const wez = (...args) => execFileSync('wezterm', ['cli', ...args], { encoding: 'utf8' }).trim();
 
@@ -26,7 +28,7 @@ export const ALT_DOWN = '\x1b[1;3B', ALT_UP = '\x1b[1;3A';
  * Code 2.1.302) is its only change; any other change is left and named.
  */
 export function keepSettings() {
-	const kept = [`${homedir()}/.claude/settings.json`, `${REPO}/.claude/settings.json`, `${REPO}/.claude/settings.local.json`].map((file) => [file, existsSync(file) ? readFileSync(file) : null]);
+	const kept = [`${CONFIG_DIR}/settings.json`, `${REPO}/.claude/settings.json`, `${REPO}/.claude/settings.local.json`].map((file) => [file, existsSync(file) ? readFileSync(file) : null]);
 	return () => {
 		for (const [file, before] of kept) {
 			if (!existsSync(file)) continue;

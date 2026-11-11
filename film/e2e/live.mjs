@@ -6,8 +6,7 @@
 // and put back by finish().
 import { execFileSync } from 'node:child_process';
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
-import { homedir } from 'node:os';
-import { claudePath, keepSettings, openPane, sleep } from '../recorder.mjs';
+import { claudePath, CONFIG_DIR, keepSettings, openPane, sleep } from '../recorder.mjs';
 import { parseScreen, plainRows, PRIVATE } from '../screen.mjs';
 
 export { sleep };
@@ -20,11 +19,29 @@ const LINK_FG = 'rgb(153,204,255)';
 const COLS = 100, ROWS = 30;
 // The session reads the person's own instructions too; these keep it to the question.
 const APPEND = 'This session is a recorded product test. Write in English only, answer from the question alone without using any tools, and do not end replies with a status block or any closing summary.';
-// The installed cc-stretch is turned off for the session only, so the package under test is the one loaded.
-const ONLY_PACKAGE = JSON.stringify({ enabledPlugins: { 'cc-stretch@cc-stretch': false } });
+/** The person's settings, or none where the file cannot be read. */
+function userSettings() {
+	try {
+		return JSON.parse(readFileSync(`${CONFIG_DIR}/settings.json`, 'utf8'));
+	} catch {
+		return {};
+	}
+}
 
-/** Begins a check of the package at `plugin`; open() starts each session, with `env` added to its environment. */
-export function startCheck({ plugin, out, append = APPEND, env = {} }) {
+/**
+ * The session's own settings: `settings`, with every installed cc-stretch, from whichever
+ * marketplace, turned off for the session only, so the package under test is the one loaded.
+ */
+function sessionSettings(settings) {
+	const installed = Object.keys(userSettings().enabledPlugins ?? {}).filter((name) => name.startsWith('cc-stretch@'));
+	return JSON.stringify({ ...settings, enabledPlugins: Object.fromEntries(['cc-stretch@cc-stretch', ...installed].map((name) => [name, false])) });
+}
+
+/**
+ * Begins a check of the package at `plugin`; open() starts each session, with `env` added to its
+ * environment and `settings` to the settings it is started with.
+ */
+export function startCheck({ plugin, out, append = APPEND, env = {}, settings = {} }) {
 	mkdirSync(out, { recursive: true });
 	const claude = claudePath();
 	const report = { plugin, claude: execFileSync(claude, ['--version'], { encoding: 'utf8' }).trim(), started: new Date().toISOString(), size: { cols: COLS, rows: ROWS } };
@@ -37,13 +54,13 @@ export function startCheck({ plugin, out, append = APPEND, env = {} }) {
 	let pane;
 	let sessions = 0;
 
-	/** Starts a session in a new pane, in fullscreen unless told otherwise. */
-	function open({ fullscreen = true } = {}) {
+	/** Starts a session in a new pane, in fullscreen unless told otherwise, with `args` after its other arguments. */
+	function open({ fullscreen = true, args = [] } = {}) {
 		const debugFile = `${out}/debug-${sessions++}.log`;
 		pane = openPane({
 			cols: COLS, rows: ROWS, t0, frames, debugFile,
 			command: ['env', '-u', 'CLAUDE_CODE_CHILD_SESSION', `CLAUDE_CODE_NO_FLICKER=${fullscreen ? 1 : 0}`, ...Object.entries(env).map(([k, v]) => `${k}=${v}`),
-				claude, '--debug-file', debugFile, '--plugin-dir', plugin, '--settings', ONLY_PACKAGE, '--model', 'opus', '--append-system-prompt', append],
+				claude, '--debug-file', debugFile, '--plugin-dir', plugin, '--settings', sessionSettings(settings), '--model', 'opus', '--append-system-prompt', append, ...args],
 		});
 	}
 	async function close() {
@@ -140,11 +157,7 @@ export function startCheck({ plugin, out, append = APPEND, env = {} }) {
 
 	/** The options a save wrote for a --plugin-dir session, as of Claude Code 2.1.302. */
 	function savedOptions() {
-		try {
-			return JSON.parse(readFileSync(`${homedir()}/.claude/settings.json`, 'utf8')).pluginConfigs?.['cc-stretch@inline']?.options ?? null;
-		} catch {
-			return null;
-		}
+		return userSettings().pluginConfigs?.['cc-stretch@inline']?.options ?? null;
 	}
 
 	/**

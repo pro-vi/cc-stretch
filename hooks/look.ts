@@ -23,7 +23,7 @@ export type DrawnLook = { marks: Mark[]; highlight: Hex | '' }
 /** The default: underlined, in the text's own colour. */
 export const DEFAULT_LOOK: DrawnLook = { marks: ['underline'], highlight: '' }
 
-const textOf = (value: unknown): string => (typeof value === 'string' ? value.trim() : '')
+export const textOf = (value: unknown): string => (typeof value === 'string' ? value.trim() : '')
 
 /**
  * A highlight as one spelling: TINTED, or a hex colour in lower case, so `#264F78` and `#264f78` are

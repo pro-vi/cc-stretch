@@ -21,6 +21,12 @@
       "title": "Stretch colours",
       "description": "Which colours the words an opened stretch adds, and the tinted highlight, are drawn in: light for a light screen, dark for a dark one, in any case. Empty, or anything else, follows the theme setting: a light or dark theme names its palette. Under any other, such as auto, the words take the theme's own colours and the tinted highlight stays dark.",
       "default": ""
+    },
+    "trialGuide": {
+      "type": "string",
+      "title": "Guide on trial",
+      "description": "For comparing two guides on your own sessions (https://github.com/pro-vi/cc-stretch/blob/main/bench/README.md#adopting-a-guide): the absolute path of a text file holding a guide. Half of your sessions, picked by their id, then carry that text in place of the plugin's guide. A session reads the file once, at its first request under the setting, and keeps that text to its end. A file that is missing or empty leaves every session on the plugin's guide. Empty for none.",
+      "default": ""
     }
   }
 }

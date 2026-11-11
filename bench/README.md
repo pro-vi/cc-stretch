@@ -43,6 +43,17 @@ stretch (97%): 92 of 92 under 100k tokens, 319 of 342 at 400k and over (93%). Wh
 carried no guide, as in a headless session, 5 of 2,832 did. It prints counts only, so its output
 can go into an issue as it is.
 
+**Live** (`live.ts`). Where Native measures the words of replies that hold a stretch, Live counts
+how often replies in real sessions go wrong, by the guide and the model that wrote them. For every
+reply whose request is recorded with a guide in its system prompt, it counts: whether a reply of
+150 words or more holds no stretch; each layout rule under Comparing guides that needs only the
+reply's text (`items-stay-visible` and `closing-block-last` need a task, so they are not counted);
+whether a link in view hides several sections or a list; and whether a reply under 40 words still
+holds a stretch, the live form of `no-stretch-in-short-reply`, since no task says a reply is short.
+From the reading notes it counts the links the reader opened. It calls no model and prints counts
+only. Where the transcripts hold two guides, it prints how their rates differ, with an interval
+taken over sessions. This is the count a guide is adopted on (Adopting a guide, below).
+
 ## Read these numbers honestly
 
 - The replay is a **rewrite** of replies written without the plugin, not replies Claude wrote with
@@ -62,6 +73,7 @@ node bench/coverage.ts --per-project 5 > bench/out/coverage.jsonl
 node bench/native.ts ~/.claude/projects/<project>/<session>.jsonl > bench/out/native.jsonl
 node bench/report.ts
 node bench/depth.ts ~/.claude/projects/*/*.jsonl
+bun bench/live.ts ~/.claude/projects/*/*.jsonl
 ```
 
 Rewrites and coverage use `claude -p` on your own account. Raw text stays in `bench/out/`, which
@@ -125,11 +137,53 @@ text it was made on.
 When you find something new about how Claude writes stretchtext, add it here so every later guide
 gets checked against it:
 
-1. Add tasks to `tasks.ts` that reproduce it. Put a few aside with `heldOut`, so a guide chosen on
-   the others is also seen on tasks it was not chosen on.
+1. Add tasks to `tasks.ts` that reproduce it. Put a few aside with `heldOut`, so a guide shaped on
+   the others is also seen on tasks it was not shaped on.
 2. Add a rule to `rules.ts`, or a fixture to an existing rule, with examples that must fail and
    examples that must pass in `tests/bench.test.ts`.
 3. Add the guide change that should fix it to `guides.ts` as a new variant, and run it against `g0`.
+   A variant that passes goes on to a trial (Adopting a guide, below).
 
-`bun bench/stub/check.ts` runs the bench end to end with a stand-in for `claude`, without calling a
-model.
+`bun bench/stub/check.ts` runs the bench end to end with a stand-in for `claude`, and `live.ts` on
+transcripts it writes, without calling a model.
+
+## Adopting a guide
+
+The tasks are answered without tools, each from a few lines of evidence. Replies in a working
+session are not written that way, so how often a rule breaks is counted on live replies, and a
+guide replaces the plugin's when it does better there. Three steps:
+
+1. **The tasks, as a guard.** The candidate answers the tasks beside `g0`, as above. It goes no
+   further if, in most repeats of a task, it does something `g0` never does there: breaks a rule,
+   misses a point, or makes a forbidden claim. With a few answers per task, the tasks can show that
+   a guide breaks something, not that it is better.
+2. **A trial in live sessions.** Before it starts, write down the one rate the candidate is meant
+   to lower, from those `live.ts` prints, and how many sessions each guide gets. Then set the
+   plugin's `trialGuide` setting, in `/plugin`'s Configure options (as of Claude Code 2.1.302), to
+   the absolute path of a file that holds the candidate's text; a tasks run writes each guide it
+   ran to `<run>/guide-<arm>.txt`. From then on half of the sessions, picked by their id, carry the
+   candidate in place of the plugin's guide, each for the whole session. Work as usual.
+3. **The count.** Once both guides have their sessions, count the replies written since the trial
+   began:
+
+   ```
+   bun bench/live.ts --since <the trial's first day> --guide candidate=<file> ~/.claude/projects/*/*.jsonl
+   ```
+
+   A variant from `guides.ts` is named without `--guide`. The output calls the plugin's own guide
+   `shipped`, and a guide it has no name for `unnamed`. Each other guide's difference is taken from
+   `shipped`, or from the guide `--against` names. Each model is counted on its own.
+
+The candidate is adopted when, for the rate written down in step 2, the whole interval of the
+difference lies below zero, and no other rate's whole interval lies above zero. Otherwise the
+plugin's guide stays. Either way, clear the setting.
+
+Read the count once, at the number of sessions fixed in step 2: an interval read again and again
+until it clears zero will clear it by chance. The interval is taken over sessions, because a
+session's replies follow one another's wording, so it narrows with more sessions, not with more
+replies. With fewer than a few dozen sessions per guide it is usually too wide to settle anything
+but a large difference.
+
+What the count cannot see: whether the first reading still tells the reader what they need; that
+takes the judge, on the tasks. It also leaves out any session whose requests are not recorded
+(Claude Code 2.1.300 to 2.1.322 record them), since the guide is read from the recorded request.

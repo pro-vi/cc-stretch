@@ -4,6 +4,7 @@ import type { Engine } from 'claude-code/testing'
 
 import { grow } from '../hooks/grow'
 import { contrastOn } from '../hooks/contrast'
+import { GUIDE, takesTrialGuide } from '../hooks/guide'
 import { DEFAULT_LOOK, lookOf, marksSetting } from '../hooks/look'
 import { asArriving, hrefAt, layout, leadInOf, link, linkAt, namesOf, tint, widthOf, withLeadIns } from '../hooks/layout'
 import { closeAfter, hideLongForms, newStreamState, paragraphsOf, parse, stretches } from '../hooks/parse'
@@ -1636,6 +1637,65 @@ test('the system prompt carries the guide while something draws', async ($, on) 
   expect(drawn.sections.at(-1)?.id).toBe('cc-stretch:guide')
   const headless = await $.prompt.compose({ ...COMPOSE, surfaces: [] })
   expect(headless.sections.some(s => s.id === 'cc-stretch:guide')).toBe(false)
+})
+
+describe('a guide on trial', () => {
+  const FILE = '/guides/candidate.txt'
+  /** Answers the session's id and the file's text, or its failure to be read, as given; returns what was read: file paths, and `id` for each read of the session's id. */
+  const guideUnder = (on: On, id: string, file: () => string) => {
+    const reads: string[] = []
+    on('prompt.compose', () => ({ sections: [] }))
+    on('session.id', () => {
+      reads.push('id')
+      return { value: id }
+    })
+    on('fs.read', (_, e) => {
+      reads.push(e.path)
+      return { value: file() }
+    })
+    return reads
+  }
+  const guide = async ($: Engine) => (await $.prompt.compose({ ...COMPOSE, surfaces: ['terminal'] })).sections.at(-1)?.text
+
+  test('about half of all session ids take it, and the same id always falls the same way', async () => {
+    const taking = Array.from({ length: 2000 }, (_, i) => `session-${i}`).filter(takesTrialGuide).length
+    expect([taking > 900, taking < 1100]).toEqual([true, true])
+    expect([takesTrialGuide('session-1'), takesTrialGuide('session-4')]).toEqual([true, false])
+  })
+
+  test('a session its id picks carries the file\'s text, the one it first read, to its end', { options: { trialGuide: ` ${FILE} ` } }, async ($, on) => {
+    let text = 'A guide on trial.\n'
+    const reads = guideUnder(on, 'session-1', () => text)
+    expect(await guide($)).toBe('A guide on trial.')
+    text = 'Edited since.'
+    expect(await guide($)).toBe('A guide on trial.')
+    expect(reads).toEqual(['id', FILE])
+  })
+
+  test('a session its id does not pick keeps the plugin\'s guide, and the file is not read', { options: { trialGuide: FILE } }, async ($, on) => {
+    const reads = guideUnder(on, 'session-4', () => 'A guide on trial.')
+    expect(await guide($)).toBe(GUIDE)
+    expect(await guide($)).toBe(GUIDE)
+    expect(reads).toEqual(['id'])
+  })
+
+  test('a file that cannot be read leaves the plugin\'s guide', { options: { trialGuide: FILE } }, async ($, on) => {
+    guideUnder(on, 'session-1', () => {
+      throw new Error('ENOENT')
+    })
+    expect(await guide($)).toBe(GUIDE)
+  })
+
+  test('an empty file leaves the plugin\'s guide', { options: { trialGuide: FILE } }, async ($, on) => {
+    guideUnder(on, 'session-1', () => ' \n')
+    expect(await guide($)).toBe(GUIDE)
+  })
+
+  test('with no file named, every session keeps the plugin\'s guide and nothing is read', async ($, on) => {
+    const reads = guideUnder(on, 'session-1', () => 'A guide on trial.')
+    expect(await guide($)).toBe(GUIDE)
+    expect(reads).toEqual([])
+  })
 })
 
 describe('a guide Claude Code never asks for', () => {

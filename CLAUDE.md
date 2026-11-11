@@ -22,7 +22,8 @@ and in time a guide chosen for each model Claude Code runs.
   bench (`bench/README.md`). A new way Claude gets stretchtext wrong first becomes a rule in
   `bench/rules.ts`, with examples that must fail and pass in `tests/bench.test.ts`; then the guide
   change that should fix it becomes a variant in `bench/guides.ts` and answers the bench's tasks
-  beside the current guide, held-out tasks included.
+  beside the current guide, held-out tasks included. A variant that passes them is then adopted on
+  a trial in live sessions, counted by `bench/live.ts` (`bench/README.md`, Adopting a guide).
 - How a stretch is drawn: `hooks/layout.ts`, `hooks/grow.ts` and `hooks/reply.tsx`. While a
   stretch grows or shrinks, the words already on screen stay where they are.
 

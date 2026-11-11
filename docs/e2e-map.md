@@ -7,7 +7,7 @@ clicked, and text in such a paragraph is selected by the plugin itself.
 
 | Environment | Reach | Ready when | Which build | Accounts | May write | Started by |
 |---|---|---|---|---|---|---|
-| local | `claude --plugin-dir <package> --settings '{"enabledPlugins":{"cc-stretch@cc-stretch":false}}'`, run with `CLAUDE_CODE_NO_FLICKER=1` in a WezTerm pane of 100 × 30 | the prompt's `❯` drawn under a rule | `<package>` is `git archive <sha>` of the commit under test, without `tests/` | the Claude Code login already on the machine | the clipboard, through a drag or a double-click: save its text first and put it back; the user's settings file, through the style toolbar's save: the checks put it back | you, or a `film/e2e/` check |
+| local | `claude --plugin-dir <package> --settings '{"enabledPlugins":{"cc-stretch@cc-stretch":false}}'` (the `film/e2e/` checks also turn off every other `cc-stretch@<marketplace>` the person's settings enable), run with `CLAUDE_CODE_NO_FLICKER=1` in a WezTerm pane of 100 × 30 | the prompt's `❯` drawn under a rule | `<package>` is `git archive <sha>` of the commit under test, without `tests/` | the Claude Code login already on the machine | the clipboard, through a drag or a double-click: save its text first and put it back; the user's settings file, through the style toolbar's save: the checks put it back | you, or a `film/e2e/` check |
 
 There is no staging or production: the plugin runs only inside a reader's own Claude Code.
 
@@ -142,6 +142,21 @@ to its `--settings` JSON draws the light theme there, and its dim grey says whic
     choice.
   - Run the check from a folder Claude Code already trusts; it does not answer the trust question,
     which is the person's to answer.
+
+### A guide on trial
+
+- **Reach:** two sessions started with the `trialGuide` option naming a file, given under
+  `pluginConfigs` as the palette option is above, each with `--session-id`: one id for which
+  `takesTrialGuide` in `hooks/guide.ts` answers true, one for which it answers false.
+- **Drive:** send one prompt in each and wait for the reply. `bun bench/live.ts --guide
+  candidate=<file>` on the two transcripts then names the first session's guide `candidate` and
+  the second's `shipped`. `node film/e2e/trial.mjs <package> <outDir>` does all of it (checked
+  with Claude Code 2.1.322).
+- **Writes:** nothing but the sessions' own transcripts, which stay where Claude Code wrote them.
+- **Gotchas:**
+  - A session with nothing drawing, such as `claude -p` as of Claude Code 2.1.322, is sent no
+    guide at all, so the check needs a terminal.
+  - Run the check from a folder Claude Code already trusts: it does not answer the trust question.
 
 ### The style toolbar
 

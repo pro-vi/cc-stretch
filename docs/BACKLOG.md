@@ -29,7 +29,7 @@ Checkbox marks a ticket consumed (plan written, or direct commit landed).
 - [ ] **desktop-lead-in** — in the desktop app, the words before a lone period open its stretch too · verdict: pending · needs: a look at the desktop app: what a drag or double-click that starts on link text does, and what `[](…)` draws
 - [ ] **nested-lead-in** — a lone period inside an opened long form has words to click · verdict: defer · signal: none · promote when: a reader reports a one-cell period in an opened detail
 - [ ] **reading-note-test** — a bench task shows whether Claude says again what the reader left closed, once the note tells it · verdict: defer · signal: none · promote when: a guide change touches the reading-note paragraph, or the note's wording changes
-- [ ] **fresh-held-out** — an adoption is decided on tasks no guide variant was shaped on · verdict: defer · signal: none · promote when: a variant is about to be adopted on task results read while shaping it
+- [ ] **fresh-held-out** — a variant's guard run is on tasks no guide variant was shaped on · verdict: defer · signal: none · promote when: a variant is about to go to a live trial on task results read while shaping it
 - [ ] **unreported-outcomes** — a long form never states an outcome its evidence does not give · verdict: direct
 - [ ] **post-pass-stretcher** — a hook turns Claude's finished plain reply into stretchtext · verdict: pending · needs: a live check that a `turn.step` rewrite is shown and recorded
 - [ ] **opened-from-doc** — `openedFrom`'s comment in `bench/measure.ts` describes the note as 0.5.2 writes it · verdict: defer · promote when: the next change to `bench/measure.ts`
@@ -87,6 +87,9 @@ grades when the judge gets a control wrong.
 - `recall` and the rewrite prompt are in both `bench/ab.ts` and `bench/replay.ts`.
 - The code that turns verdicts into scores is in both `bench/report.ts` and `bench/coverage.ts`.
 - `bench/replay.ts` spells out the `claude -p` flags that `claudeArgs` in `bench/grading.ts` builds.
+- The 150-word line is `LONG_WORDS` in `bench/depth.ts` and in `bench/counts.ts`; the 40-word line is
+  `MIN_WORDS` in `bench/ab.ts` and `bench/replay.ts` and `SHORT_WORDS` in `bench/counts.ts`. The one
+  file all of them load is `bench/measure.ts`, which a run's manifest hashes.
 
 `replay.ts`, `report.ts` and `coverage.ts` feed the README's numbers, so change them when those
 numbers are rerun, and the numbers change once.
@@ -341,8 +344,8 @@ The four `heldOut` tasks in `bench/tasks.ts` were read while `shortened-growth`,
 `shortened-growth-words` and `shortened-growth-last-words` were shaped, as the criterion written for
 each of those runs says, and the report splits only the layout-rule table by `heldOut`. Fix shape: write
 four to six tasks before looking at any candidate's answers, keep them in a `--tasks` file run in
-their own folder once, at the adoption decision; adding them to `TASKS` would make every 24-task run
-folder refuse to resume.
+their own folder once, as the guard before a live trial (`bench/README.md`, Adopting a guide); adding
+them to `TASKS` would make every 24-task run folder refuse to resume.
 
 ## unreported-outcomes
 

@@ -42,6 +42,8 @@ declare module 'claude-code' {
        * none of its flushes is pending; null for a message left as written.
        */
       streams: Record<string, { open: { isLong: boolean }[]; fence: string | undefined; span: string | undefined } | null>
+      /** The guide this session carries under the `trialGuide` setting, once settled; null until then. */
+      guide: string | null
     }
   }
 }
