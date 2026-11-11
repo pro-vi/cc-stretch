@@ -4,6 +4,7 @@
 import { GUIDE } from '../hooks/guide.ts'
 
 const AFTER_LONG = '- The long form must read correctly in the short form'
+const AFTER_KEEPS = '- The long form keeps every word of the short form'
 const AFTER_SHORTEST = '- At its shortest, the reply is one to three short sentences'
 const AFTER_CLOSING = '- If other instructions require a closing block'
 
@@ -73,6 +74,8 @@ const RECIPES: Readonly<Record<string, readonly (readonly [anchor: string, line:
   'headings-outside': [[AFTER_SHORTEST, LIST], [LIST, '- Keep topic headings as ordinary text. Make the statement beneath each heading a stretch.']],
   /** Draft the reply in thinking first, and choose each short form's words there. */
   'draft-in-thinking': [[AFTER_LONG, '- Draft the reply in your thinking first, as plain sentences with all their detail, and choose there the words each detail grows around. Then write the reply from the draft, opening each stretch before those words: a stretch opens before its short form, so a sentence already written can no longer become one.']],
+  /** How to write a long form so that it keeps its short form's words: copy them, then add. In live replies the long form was often the detail written as a new sentence. */
+  'copy-then-add': [[AFTER_KEEPS, '- To write a long form, copy its short form and add words to the copy; do not write the detail as a new sentence. If the detail needs different words, change the short form until the long form holds every word of it.']],
   /** A stretch that hides several sections or a list gets a one-line gist for its short form, as the closing block does. */
   'sections-gist': [[AFTER_CLOSING, '- A stretch that hides several sections or a list needs a short form of the same kind: a one-line gist of what they say, never a line that only names them.']],
   /** Keep sections in view, as list items are, so no one stretch hides several. */
