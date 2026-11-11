@@ -40,6 +40,8 @@ function withReplaced(base: string, anchor: string, line: string): string {
 }
 
 const LIST = '- Stretch list items, not whole lists.'
+const COPY = '- To write a long form, copy its short form and add words to the copy; do not write the detail as a new sentence. If the detail needs different words, change the short form until the long form holds every word of it.'
+const SERIES = '- A short form says what its long form says, in fewer words, however many that takes. When the long form is a plan or a series, its short form is that series with each part cut to a few words, never a sentence that only announces it. Example: "{{Next: key the cache on the lockfile; drop the retry; ship on Friday.|Next: key the CI cache on the lockfile as well as `package.json`; drop the retry, which only hides the stale read; and ship on Friday, once CI has passed twice.}}"'
 
 /** Each variant as the lines it adds and the bullet each goes after, in reading order. */
 const RECIPES: Readonly<Record<string, readonly (readonly [anchor: string, line: string])[]>> = {
@@ -75,7 +77,13 @@ const RECIPES: Readonly<Record<string, readonly (readonly [anchor: string, line:
   /** Draft the reply in thinking first, and choose each short form's words there. */
   'draft-in-thinking': [[AFTER_LONG, '- Draft the reply in your thinking first, as plain sentences with all their detail, and choose there the words each detail grows around. Then write the reply from the draft, opening each stretch before those words: a stretch opens before its short form, so a sentence already written can no longer become one.']],
   /** How to write a long form so that it keeps its short form's words: copy them, then add. In live replies the long form was often the detail written as a new sentence. */
-  'copy-then-add': [[AFTER_KEEPS, '- To write a long form, copy its short form and add words to the copy; do not write the detail as a new sentence. If the detail needs different words, change the short form until the long form holds every word of it.']],
+  'copy-then-add': [[AFTER_KEEPS, COPY]],
+  /** A long form that is a plan or a series gets that series, cut down, as its short form. In live replies such a short form was often the sentence that announces the series. */
+  'series-gist': [[LIST, SERIES]],
+  /** series-gist with copy-then-add: a series for a short form drops or reorders its words more often, which the copy line is for. */
+  'series-copy': [[LIST, SERIES], [AFTER_KEEPS, COPY]],
+  /** A sentence that only introduces what follows stays in view as plain text, and what it introduces is stretched. */
+  'lead-in-outside': [[LIST, '- A sentence that only introduces what follows it, such as "Here is the plan:", "Two things changed." or "I would shape it like this.", is never a short form. Leave it as plain text outside the stretch, and stretch what it introduces, each part under a short form that states it.']],
   /** A stretch that hides several sections or a list gets a one-line gist for its short form, as the closing block does. */
   'sections-gist': [[AFTER_CLOSING, '- A stretch that hides several sections or a list needs a short form of the same kind: a one-line gist of what they say, never a line that only names them.']],
   /** Keep sections in view, as list items are, so no one stretch hides several. */
