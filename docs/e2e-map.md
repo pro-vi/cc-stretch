@@ -124,9 +124,10 @@ to its `--settings` JSON draws the light theme there, and its dim grey says whic
 - **Gotchas:** run the check from a folder Claude Code already trusts; it does not answer the trust
   question, which is the person's to answer.
 
-### Open a link in a paragraph that holds a stretch
+### Links in a paragraph that holds a stretch
 
-- **Reach:** a paragraph that holds a stretch and a URL or a markdown link. `film/e2e/follow.mjs`
+- **Reach:** a paragraph that holds a stretch and a URL or a markdown link, and a stretch whose
+  long form links words its short form holds plain. `film/e2e/follow.mjs`
   has Claude write a fixed sample through `--append-system-prompt` and checks the steps below, with
   a stand-in `open` and `xdg-open` first on the session's PATH that write each URL to a file.
 - **Drive:**
@@ -136,6 +137,8 @@ to its `--settings` JSON draws the light theme there, and its dim grey says whic
   3. Ctrl-click a closed stretch: it opens, as on a plain click, and no URL is opened.
   4. Alt-click a link inside a closed stretch's short form: the link is opened, and the stretch
      stays closed.
+  5. Click a stretch whose long form makes a link of words its short form holds plain: the link
+     is drawn, and no screen of the growth shows its markup.
 - **Writes:** nothing outside its `<outDir>`.
 - **Gotchas:**
   - The check sends the modifiers itself; which ones a real click passes on is the terminal's

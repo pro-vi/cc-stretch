@@ -145,6 +145,35 @@ describe('grow', () => {
   test('a long form without the short words arrives in reading order', async () => {
     expect(grow('x', parse('one two three four'), 0.5, () => '')).toBe('one two ')
   })
+
+  test('a markdown link whose label holds short words anchors them, target and all', async () => {
+    const long = parse('The [forum thread](https://x.invalid/t) reports it, twice.')
+    expect(grow('The forum thread reports it.', long, 0, () => '')).toBe('The [forum thread](https://x.invalid/t) reports it,')
+    // One word of the label is enough: the link is never shown in part.
+    expect(grow('The thread reports it.', long, 0, () => '')).toBe('The [forum thread](https://x.invalid/t) reports it,')
+    expect(grow('论坛帖子', parse('[论坛帖子](https://x.invalid/t),还有更多'), 0, () => '')).toMatch(/^\[论坛帖子\]\(https:\/\/x\.invalid\/t\)/)
+  })
+
+  test('a link the long form adds arrives whole, and no frame draws its markup', async () => {
+    const long = 'Read [the docs page](https://x.invalid/a) now, then go on.'
+    for (let step = 0; step <= 20; step += 1) {
+      const frame = grow('Read now.', parse(long), step / 20, () => '', word => tint('#d3bdff', word))
+      expect((layout(asArriving(frame), 200)[0] ?? []).map(run => run.text).join('')).not.toMatch(/[[\]()]/)
+    }
+    const runs = layout(grow('Read now.', parse(long), 1, () => '', word => tint('#d3bdff', word)), 200)[0] ?? []
+    expect(runs.filter(run => run.href).map(run => [run.text, run.tint, run.href])).toEqual([['the docs page', '#d3bdff', 'https://x.invalid/a']])
+  })
+
+  test('a word that stands only in a link\'s target, or ends a URL, is not the short word', async () => {
+    expect(grow('thread', parse('See [the forum](https://x.invalid/thread) now'), 0, () => '')).toBe('')
+    expect(grow('the guide', parse('the docs at https://docs.invalid/guide'), 0, () => '')).toBe('the')
+  })
+
+  test('a path that ends in the short form\'s file name anchors it', async () => {
+    expect(grow('result.md', parse('logs/r69/result.md'), 0, () => '')).toBe('logs/r69/result.md')
+    expect(grow('I ran `attention observe`.', parse('I ran `target/debug/attention observe --for request`.'), 0, () => '')).toBe('I ran `target/debug/attention observe')
+    expect(grow('result.md', parse('logs/r69/other.md'), 0, () => '')).toBe('')
+  })
 })
 
 describe('streaming', () => {

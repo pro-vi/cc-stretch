@@ -7,9 +7,13 @@ import type { Segment, Stretch } from './parse'
 // the long form in order, are anchors and never move; the words between them
 // arrive from the anchors outward, so the sentence widens at every seam at
 // once, to the left of an anchor as much as to its right. Words arrive whole:
-// a terminal has no room to fade one in, and half a word reads as a typo.
+// a terminal has no room to fade one in, and half a word reads as a typo. A
+// markdown link arrives whole too, since part of one is drawn as its markup.
 
-type Token = { kind: 'word' | 'space'; text: string } | { kind: 'nested'; stretch: Stretch }
+type Token = { kind: 'word' | 'space'; text: string } | { kind: 'link'; text: string; label: string } | { kind: 'nested'; stretch: Stretch }
+
+/** A markdown link or image as hooks/layout.ts reads one: a label, then a target with no space in it. */
+const LINK = /!?\[([^\]\n]+)\]\([^)\s]+\)/g
 
 /** A word or a run of spaces of the long form, or a nested stretch. */
 type Atom = string | Stretch
@@ -60,7 +64,7 @@ export function grow(
 /**
  * Where a long form's added words and nested stretches land around the short form's words: before
  * the first, between two, or after the last (all of them, when the short form has none in it). And
- * how many of the short form's words the long form is missing, in order.
+ * how many of the short form's words no word of the long form holds, in order.
  */
 export function growthOf(short: string, long: Segment[]): Record<Side, number> & { missing: number } {
   const tokens = tokenize(long)
@@ -110,39 +114,48 @@ function reveal(run: Atom[], side: Side, progress: number): Atom[] {
 }
 
 function tokenize(long: Segment[]): Token[] {
-  return long.flatMap((part): Token[] =>
-    typeof part === 'string'
-      ? part
-          .split(/(\s+)/)
-          .filter(text => text !== '')
-          .flatMap((text): Token[] => (/^\s+$/.test(text) ? [{ kind: 'space', text }] : breakables(text).map(word => ({ kind: 'word', text: word }))))
-      : [{ kind: 'nested', stretch: part }],
-  )
+  const plain = (text: string): Token[] =>
+    text
+      .split(/(\s+)/)
+      .filter(piece => piece !== '')
+      .flatMap((piece): Token[] => (/^\s+$/.test(piece) ? [{ kind: 'space', text: piece }] : breakables(piece).map(word => ({ kind: 'word', text: word }))))
+  return long.flatMap((part): Token[] => {
+    if (typeof part !== 'string') return [{ kind: 'nested', stretch: part }]
+    const tokens: Token[] = []
+    let at = 0
+    for (const link of part.matchAll(LINK)) {
+      tokens.push(...plain(part.slice(at, link.index)), { kind: 'link', text: link[0], label: link[1] ?? '' })
+      at = link.index + link[0].length
+    }
+    return [...tokens, ...plain(part.slice(at))]
+  })
 }
 
 /**
- * The token indexes of the long form that carry the short form's words, as many as can be kept in
- * order (a longest common subsequence), and how many of its words found no place. A nested stretch
- * shows its own short form, so its words count where it stands.
+ * The token indexes of the long form whose words hold the short form's words (`holds`), as many as
+ * can be kept in order (a longest common subsequence), and how many of the short form's words no
+ * word of the long form holds. A nested stretch shows its own short form, and a link its label, so
+ * their words count where they stand.
  */
 function anchorsOf(short: string, tokens: Token[]): { anchors: Set<number>; missing: number } {
   const wordsIn = (text: string) => text.split(/\s+/).flatMap(breakables)
-  const want = wordsIn(short).map(bare).filter(word => word !== '')
+  // A link in the short form is read as its label, as the reader reads it.
+  const want = wordsIn(short.replace(LINK, '$1')).map(bare).filter(word => word !== '')
   const have: { token: number; word: string }[] = []
   tokens.forEach((token, i) => {
-    const words = token.kind === 'word' ? [token.text] : token.kind === 'nested' ? wordsIn(token.stretch.short) : []
+    const words = token.kind === 'word' ? [token.text] : token.kind === 'link' ? wordsIn(token.label) : token.kind === 'nested' ? wordsIn(token.stretch.short) : []
     for (const word of words.map(bare).filter(w => w !== '')) have.push({ token: i, word })
   })
 
   // hooks/guide.ts asks the long form to keep every word of the short form, in order. When it does,
-  // the earliest match of each word is already the longest common subsequence, so the table below,
+  // the earliest word that holds each one is already a longest common subsequence, so the table below,
   // one cell per pair of words, is skipped: a Chinese long form has a word per character. When it
   // does not, the table finds the most words that can be kept.
   const anchors = new Set<number>()
   let matched = 0
   for (const { token, word } of have) {
     if (matched === want.length) break
-    if (word !== want[matched]) continue
+    if (!holds(word, want[matched])) continue
     anchors.add(token)
     matched++
   }
@@ -154,11 +167,11 @@ function anchorsOf(short: string, tokens: Token[]): { anchors: Set<number>; miss
     for (let i = want.length - 1; i >= 0; i--) {
       for (let j = have.length - 1; j >= 0; j--) {
         const row = lengths[i] ?? [], below = lengths[i + 1] ?? []
-        row[j] = want[i] === have[j]?.word ? (below[j + 1] ?? 0) + 1 : Math.max(below[j] ?? 0, row[j + 1] ?? 0)
+        row[j] = holds(have[j]?.word, want[i]) ? (below[j + 1] ?? 0) + 1 : Math.max(below[j] ?? 0, row[j + 1] ?? 0)
       }
     }
     for (let i = 0, j = 0; i < want.length && j < have.length; ) {
-      if (want[i] === have[j]?.word) {
+      if (holds(have[j]?.word, want[i])) {
         anchors.add(have[j]?.token ?? -1)
         matched++
         i++
@@ -181,4 +194,14 @@ function anchorsOf(short: string, tokens: Token[]): { anchors: Set<number>; miss
 /** A word without its surrounding punctuation or markdown marks, lowercased, so `cache.` meets `**cache**`. */
 function bare(word: string): string {
   return word.replace(/^[^\p{L}\p{N}]+|[^\p{L}\p{N}]+$/gu, '').toLowerCase()
+}
+
+/**
+ * Whether a word of the long form holds a word of the short form: it is that word, or a path that
+ * ends in it, as when a file's name grows into where the file is. A URL is not such a path: its last
+ * part is not what the reader read.
+ */
+function holds(have = '', want = ''): boolean {
+  // Asked once per cell of the table in anchorsOf, so it builds no string.
+  return have === want || (have.endsWith(want) && have[have.length - want.length - 1] === '/' && !have.includes('://'))
 }

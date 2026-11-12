@@ -45,6 +45,14 @@ describe('benchmark measures', () => {
     expect(growthOf('Three options exist.', parse('Two options exist.')).missing).toBe(1)
   })
 
+  test('a short form\'s words inside a markdown link or at the end of a path are kept', async () => {
+    expect(growthOf('Sources: the forum thread, the wiki.', parse('Sources: [the forum thread](https://x.invalid/t), [the wiki](https://x.invalid/wiki).')).missing).toBe(0)
+    expect(growthOf('result.md', parse('/srv/logs/r69/result.md')).missing).toBe(0)
+    expect(growthOf('`compact.lua`', parse('`configs/term/compact.lua`, the idle code,')).missing).toBe(0)
+    expect(growthOf('thread', parse('[the forum](https://x.invalid/thread)')).missing).toBe(1)
+    expect(growthOf('result.md', parse('/srv/logs/r69/other.md')).missing).toBe(1)
+  })
+
   test('counts words that hold a letter or a digit, not markup or punctuation', async () => {
     expect(words('A *b* -- `c` 42 ---')).toBe(4)
   })
