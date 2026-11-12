@@ -1,13 +1,13 @@
 // What live replies show, in counts: the layout rules a reply breaks, what its links hide, how many
 // a judge called labels and what the reader opened, then how often each happens under a guide and
 // how two guides differ. Nothing here calls a model or keeps a reply's text. live.ts reads
-// transcripts into these counts, and asks the judge.
+// transcripts into these counts, asks the judge, and can pass the counts to another machine.
 import { isOpenable, parse, stretches } from '../hooks/parse.ts'
 import type { Stretch } from '../hooks/parse.ts'
 import type { Label } from './grading.ts'
 import { draw, measure } from './measure.ts'
 import type { Measure } from './measure.ts'
-import { hiddenIn, RULES, verdictsOf } from './rules.ts'
+import { hiddenIn, isRuleId, RULES, verdictsOf } from './rules.ts'
 import type { Hidden, RuleId } from './rules.ts'
 
 /** The words from which a reply counts as long: the bar depth.ts sets, taken here on the words with every stretch open. */
@@ -62,6 +62,31 @@ export function counted(session: string, reply: string, opened?: ReadonlySet<str
     ...(verdicts?.length === inView.length && { labels: verdicts.filter((verdict, i) => verdict === 'label' && takesLabel(hides[i])).length }),
     ...(opened !== undefined && { opened: inView.filter(link => opened.has(link.short.trim())).length }),
   }
+}
+
+/**
+ * A counted reply as one line of `live.ts --write-counts`: with its model and guide, the day (UTC)
+ * its session's first reply was written, empty where no reply is dated, and the models that judged
+ * its links.
+ */
+export type CountedRow = { model: string; guide: string; begun: string; counted: Counted; judges?: string[] }
+
+/** The counted replies in `rows`, read from a file `live.ts --write-counts` wrote. Throws on a row that is not one. */
+export function countedIn(rows: readonly unknown[]): CountedRow[] {
+  const fields = (value: unknown): Record<string, unknown> => (typeof value === 'object' && value !== null ? (value as Record<string, unknown>) : {})
+  const isCount = (value: unknown) => typeof value === 'number' && Number.isInteger(value) && value >= 0
+  return rows.map((row, i) => {
+    const { model, guide, begun, counted: counts, judges } = fields(row)
+    const { session, broken, skim, full, stretches: openable, inView, onSections, labelLinks, read, labels, opened } = fields(counts)
+    const isRow =
+      typeof model === 'string' && typeof guide === 'string' && typeof session === 'string' &&
+      typeof begun === 'string' && /^(\d{4}-\d{2}-\d{2})?$/.test(begun) &&
+      Array.isArray(broken) && broken.every(rule => typeof rule === 'string' && isRuleId(rule)) &&
+      (judges === undefined || (Array.isArray(judges) && judges.every(judge => typeof judge === 'string'))) &&
+      [skim, full, openable, inView, onSections, labelLinks].every(isCount) && [read, labels, opened].every(count => count === undefined || isCount(count))
+    if (!isRow) throw new Error(`row ${i + 1} is no counted reply`)
+    return row as CountedRow
+  })
 }
 
 /** How many places something can go wrong in, and in how many of them it does. */

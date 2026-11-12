@@ -2,7 +2,8 @@
 // them (bench/README.md, Live), and how two guides differ. Only replies whose request is recorded
 // with a guide in its system prompt are counted (Claude Code 2.1.300 to 2.1.322 record it).
 //   bun bench/live.ts [--guide <name>=<file>]... [--since <YYYY-MM-DD>] [--against <name>] [--sessions]
-//                     [--labels <file> [--judge <model>] [--concurrency 4]] ~/.claude/projects/*/*.jsonl
+//                     [--labels <file> [--judge <model>] [--concurrency 4]]
+//                     [--write-counts <file>] [--counts <file>]... [~/.claude/projects/*/*.jsonl]
 // A recorded guide is named `shipped` when it is the plugin's own, by its name in guides.ts when it
 // is a variant there, by --guide's name when its text is that file's, and `unnamed` otherwise. A
 // guide that only adds text after another's last line is told from it only when it has a name.
@@ -15,6 +16,12 @@
 // has no verdict for, through `claude -p`, and its verdicts are added to the file. A row there
 // holds a hash of what the judge was asked and its verdicts, never a reply's text. Keep one judge
 // to a file.
+// --write-counts writes what was counted of each reply of these transcripts: its model, guide,
+// session id and counts, never its text. --counts adds such a file's replies to this count, so
+// sessions on two machines make one set without moving a transcript. A file written by another
+// version of the bench is refused, and --since leaves out its older sessions too. Its replies keep
+// the guide names and the judge's verdicts they were counted with: give both machines the same
+// --guide names and the same judge.
 // Runs under bun, as the plugin's hooks import each other without file extensions.
 import { execFile } from 'node:child_process'
 import { hash } from 'node:crypto'
@@ -23,8 +30,8 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { parseArgs } from 'node:util'
 import { GUIDE } from '../hooks/guide.ts'
-import { counted, differenceOf, FAILURES, guideIn, LABEL, sum, takesLabel, talliesOf, totalOf } from './counts.ts'
-import type { Counted } from './counts.ts'
+import { counted, countedIn, differenceOf, FAILURES, guideIn, LABEL, sum, takesLabel, talliesOf, totalOf } from './counts.ts'
+import type { Counted, CountedRow } from './counts.ts'
 import { claudeArgs, LABELS, readLabels, resultOf } from './grading.ts'
 import type { Label } from './grading.ts'
 import { VARIANTS } from './guides.ts'
@@ -33,6 +40,16 @@ import { marked } from './measure.ts'
 import { hiddenIn } from './rules.ts'
 import { stringsOf } from './tasks.ts'
 import { GUIDE_HEADING, sessionOf } from './transcripts.ts'
+
+/**
+ * The code that decides what a reply is counted as. A file from --write-counts carries its SHA-256,
+ * so counts made by another version are not added to this one's.
+ */
+const COUNTING_CODE = [
+  'bench/counts.ts', 'bench/grading.ts', 'bench/guides.ts', 'bench/live.ts', 'bench/measure.ts', 'bench/rules.ts', 'bench/transcripts.ts',
+  'hooks/grow.ts', 'hooks/guide.ts', 'hooks/layout.ts', 'hooks/parse.ts',
+]
+const countingCode = () => hash('sha256', COUNTING_CODE.map(file => readFileSync(new URL(`../${file}`, import.meta.url), 'utf8')).join('\n'))
 
 /** Judge calls failing in a row before the asking stops, as a run in ab.ts stops. */
 const MAX_FAILURES = 8
@@ -47,6 +64,7 @@ const { values: flags, positionals: paths } = (() => {
       options: {
         guide: { type: 'string', multiple: true }, since: { type: 'string' }, against: { type: 'string' }, sessions: { type: 'boolean' },
         labels: { type: 'string' }, judge: { type: 'string' }, concurrency: { type: 'string' },
+        'write-counts': { type: 'string' }, counts: { type: 'string', multiple: true },
       },
       allowPositionals: true,
     })
@@ -54,7 +72,8 @@ const { values: flags, positionals: paths } = (() => {
     return fail(messageOf(error))
   }
 })()
-if (paths.length === 0) fail('usage: bun bench/live.ts [--guide <name>=<file>]... [--since <YYYY-MM-DD>] [--against <name>] [--sessions] [--labels <file> [--judge <model>] [--concurrency 4]] <transcript.jsonl>...')
+const countFiles = flags.counts ?? []
+if (paths.length === 0 && countFiles.length === 0) fail('usage: bun bench/live.ts [--guide <name>=<file>]... [--since <YYYY-MM-DD>] [--against <name>] [--sessions] [--labels <file> [--judge <model>] [--concurrency 4]] [--write-counts <file>] [--counts <file>]... [<transcript.jsonl>...]')
 const since = flags.since
 if (since !== undefined && !/^\d{4}-\d{2}-\d{2}$/.test(since)) fail(`--since wants a day as YYYY-MM-DD, not ${since}`)
 const base = flags.against ?? 'shipped'
@@ -96,7 +115,7 @@ function questionOf(reply: string): Question | undefined {
 }
 
 // The replies to count, in the order met, each with what the judge is asked about it where labels are counted.
-type Kept = { model: string; guide: string; session: string; reply: string; opened?: ReadonlySet<string>; question?: Question }
+type Kept = { model: string; guide: string; begun: string; session: string; reply: string; opened?: ReadonlySet<string>; question?: Question }
 const kept: Kept[] = []
 const left = { unread: 0, unrecorded: 0, unguided: 0, early: 0 }
 for (const path of paths) {
@@ -108,7 +127,8 @@ for (const path of paths) {
     continue
   }
   const guides = new Map([...session.systems].map(([hash, system]) => [hash, guideIn(system, named, GUIDE_HEADING)]))
-  const isEarly = since !== undefined && (session.turns[0]?.at ?? '').slice(0, 10) < since
+  const begun = (session.turns[0]?.at ?? '').slice(0, 10)
+  const isEarly = since !== undefined && begun < since
   for (const turn of session.turns) {
     if (turn.shapeHash === undefined) {
       left.unrecorded += 1
@@ -123,7 +143,7 @@ for (const path of paths) {
       left.early += 1
       continue
     }
-    kept.push({ model: turn.model ?? 'unknown model', guide, session: turn.session, reply: turn.reply, opened: turn.opened, question: labelsFile === undefined ? undefined : questionOf(turn.reply) })
+    kept.push({ model: turn.model ?? 'unknown model', guide, begun, session: turn.session, reply: turn.reply, opened: turn.opened, question: labelsFile === undefined ? undefined : questionOf(turn.reply) })
   }
 }
 
@@ -206,19 +226,64 @@ const judge = flags.sessions ? undefined : flags.judge
 const verdicts: Verdicts = labelsFile === undefined ? new Map() : savedIn(labelsFile, judge !== undefined)
 if (labelsFile !== undefined && judge !== undefined) await ask(judge, labelsFile, verdicts)
 
-// The counted replies, by model and then by guide, in the order first met.
-const found = new Map<string, Map<string, Counted[]>>()
+// What was counted of each reply of these transcripts.
+const here: CountedRow[] = []
 const judgedBy = new Set<string>()
 const labelled = { judged: 0, unjudged: 0 }
-for (const { model, guide, session, reply, opened, question } of kept) {
+for (const { model, guide, begun, session, reply, opened, question } of kept) {
   const answer = question === undefined ? undefined : verdicts.get(question.asked)
-  if (question !== undefined) labelled[answer === undefined ? 'unjudged' : 'judged'] += 1
-  for (const by of answer?.models ?? []) judgedBy.add(by)
+  here.push({ model, guide, begun, counted: counted(session, reply, opened, answer?.given), ...(answer !== undefined && { judges: answer.models }) })
+}
+/** Whether a counted reply holds a link the label count takes and no verdict that is counted. */
+const isUnjudged = ({ counted: reply }: CountedRow) => reply.labelLinks > 0 && reply.labels === undefined
+const writeTo = flags['write-counts']
+if (writeTo !== undefined) {
+  writeFileSync(writeTo, [{ countedBy: countingCode() }, ...here].map(row => `${JSON.stringify(row)}\n`).join(''))
+  // The reader of this file cannot ask a judge: the replies' text stays here.
+  const unjudged = here.filter(isUnjudged).length
+  console.error(`wrote the counts of ${here.length} replies to ${writeTo}${unjudged === 0 ? '' : `; ${unjudged} hold a link the label count takes and no verdict`}`)
+}
+
+/** The counted replies `file` holds, as --write-counts wrote them where their transcripts are. */
+function addedFrom(file: string): CountedRow[] {
+  try {
+    const { rows: [first, ...rows], isCut } = rowsOf(readFileSync(file, 'utf8'))
+    if (isCut) throw new Error('its last line was cut short')
+    if (typeof first !== 'object' || first === null || Reflect.get(first, 'countedBy') !== countingCode()) throw new Error('it was written by another version of the bench, or by none')
+    return countedIn(rows)
+  } catch (error) {
+    return fail(`--counts ${file}: ${messageOf(error)}`)
+  }
+}
+// A session counted from its transcript and again from a file, or from two files, would count twice.
+const elsewhere: CountedRow[] = []
+const sessionsSeen = new Set(here.map(row => row.counted.session))
+for (const file of countFiles) {
+  const rows = addedFrom(file)
+  const twice = rows.find(row => sessionsSeen.has(row.counted.session))
+  if (twice !== undefined) fail(`--counts ${file}: session ${twice.counted.session} is already counted, from a transcript given or an earlier file`)
+  for (const row of rows) {
+    sessionsSeen.add(row.counted.session)
+    if (since !== undefined && row.begun < since) left.early += 1
+    else elsewhere.push(row)
+  }
+}
+const all = [...here, ...elsewhere]
+// A file's replies bring their verdicts, so the label rate is printed for them without --labels.
+const hasLabels = labelsFile !== undefined || all.some(row => row.counted.labels !== undefined)
+
+// The counted replies, by model and then by guide, in the order first met.
+const found = new Map<string, Map<string, Counted[]>>()
+for (const row of all) {
+  const { model, guide, counted: reply, judges } = row
+  // A reply's verdicts are counted where the judge gave one for each of its links in view.
+  if (reply.labelLinks > 0) labelled[isUnjudged(row) ? 'unjudged' : 'judged'] += 1
+  if (reply.labels !== undefined) for (const by of judges ?? []) judgedBy.add(by)
   const byGuide = found.get(model) ?? new Map<string, Counted[]>()
   found.set(model, byGuide)
   const replies = byGuide.get(guide) ?? []
   byGuide.set(guide, replies)
-  replies.push(counted(session, reply, opened, answer?.given))
+  replies.push(reply)
 }
 
 const percent = (part: number, whole: number) => (whole === 0 ? 'n/a' : `${Math.round((100 * part) / whole)}%`)
@@ -229,15 +294,16 @@ console.log(
   [
     `Live replies whose request carried a guide, in ${paths.length - left.unread} transcripts${left.unread > 0 ? ` (${left.unread} more could not be read)` : ''}${since === undefined ? '' : `, in sessions begun on ${since} or later`}.`,
     `Left out: ${left.unrecorded} replies whose request is not recorded, ${left.unguided} whose request carried no guide${since === undefined ? '' : `, ${left.early} in sessions begun earlier`}.`,
+    ...(elsewhere.length === 0 ? [] : [`Added from --counts, as counted where their transcripts are: ${elsewhere.length} replies in ${new Set(elsewhere.map(row => row.counted.session)).size} sessions.`]),
     ...(flags.sessions
       ? ['Under each guide: its replies and their sessions, then the sessions each rate can be taken over.']
-      : labelsFile === undefined
+      : !hasLabels
       ? []
       : [`Labels: of the replies with a link the label count takes, ${labelled.judged} have the judge's verdicts${judgedBy.size === 0 ? '' : ` (${[...judgedBy].sort().join(', ')})`} and ${labelled.unjudged} have none.`]),
   ].join('\n'),
 )
 
-const failures = labelsFile === undefined ? FAILURES : [...FAILURES, LABEL]
+const failures = hasLabels ? [...FAILURES, LABEL] : FAILURES
 const models = [...found].sort(([, a], [, b]) => sum([...b.values()].map(r => r.length)) - sum([...a.values()].map(r => r.length)))
 for (const [model, byGuide] of models) {
   const guides = [...byGuide.keys()].sort((a, b) => (a === base ? -1 : b === base ? 1 : (byGuide.get(b)?.length ?? 0) - (byGuide.get(a)?.length ?? 0)))

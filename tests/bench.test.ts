@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'claude-code/testing'
 
-import { counted, differenceOf, FAILURES, guideIn, LABEL, rateOf, talliesOf } from '../bench/counts.ts'
+import { counted, countedIn, differenceOf, FAILURES, guideIn, LABEL, rateOf, talliesOf } from '../bench/counts.ts'
 import { measure, openedFrom, render, words } from '../bench/measure.ts'
 import { shortsNamed } from '../bench/opened.ts'
 import { growthOf } from '../hooks/grow.ts'
@@ -132,6 +132,23 @@ describe('live counts', () => {
     expect(counted('s', reply, undefined, ['label']).labels).toBe(undefined)
     expect(LABEL.tally(counted('s', reply))).toEqual({ hits: 0, of: 0 })
     expect(talliesOf([judged, counted('s', `${LONG} ${KEPT}`, undefined, ['label']), counted('t', reply)], LABEL)).toEqual([{ hits: 2, of: 3 }])
+  })
+
+  test('a counted reply read back from another machine\'s file is the same counts, and a row that is not one is refused', async () => {
+    const CLOSING = '{{Status: built.|Status: built.\n\n---\n\n**Next** · ship\n\n---}}'
+    const row = { model: 'm', guide: 'shipped', begun: '2026-11-12', counted: counted('a', `${LONG} ${REWORDED} ${SECTIONS}\n\n${CLOSING}`, new Set(['Two findings.']), ['label', 'gist', 'gist']), judges: ['a-judge'] }
+    const rows = [row, { model: 'm', guide: 'candidate', begun: '', counted: counted('b', 'Short.') }]
+    const read = countedIn(JSON.parse(JSON.stringify(rows)))
+    expect(read).toEqual(rows)
+    expect(talliesOf(read.map(row => row.counted), LABEL)).toEqual([{ hits: 1, of: 2 }])
+    expect(talliesOf(read.map(row => row.counted), failureNamed('keeps-short-words'))).toEqual([{ hits: 1, of: 1 }])
+    expect(() => countedIn([{ ...row, guide: undefined }])).toThrow('row 1 is no counted reply')
+    expect(() => countedIn([row, { ...row, counted: { ...row.counted, full: '170' } }])).toThrow('row 2 is no counted reply')
+    expect(() => countedIn([{ ...row, counted: { ...row.counted, labels: -1 } }])).toThrow('row 1 is no counted reply')
+    expect(() => countedIn([{ ...row, judges: 'a-judge' }])).toThrow('row 1 is no counted reply')
+    expect(() => countedIn(['a reply'])).toThrow('row 1 is no counted reply')
+    expect(() => countedIn([{ ...row, begun: 'yesterday' }])).toThrow('row 1 is no counted reply')
+    expect(() => countedIn([{ ...row, counted: { ...row.counted, broken: ['a-rule-this-bench-lacks'] } }])).toThrow('row 1 is no counted reply')
   })
 
   test('two guides differ by their rates, with an interval drawn over sessions that is the same on every run', async () => {

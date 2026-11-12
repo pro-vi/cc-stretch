@@ -57,8 +57,9 @@ link in view whether its short form is a label, one that only names or announces
 closing block's link is left out, as the guide asks for its short form in a bullet of its own. The
 file keeps each verdict under a hash of what the judge was asked, never a reply's text, so a later
 count asks only about new replies. Where the transcripts hold two guides, it prints how their
-rates differ, with an interval taken over sessions. This is the count a guide is adopted on
-(Adopting a guide, below).
+rates differ, with an interval taken over sessions. Replies counted on another machine can join
+the count without their transcripts (`--write-counts`, `--counts`). This is the count a guide is
+adopted on (Adopting a guide, below).
 
 ## Read these numbers honestly
 
@@ -191,6 +192,14 @@ guide replaces the plugin's when it does better there. Three steps:
    named without `--guide`. The output calls the plugin's own guide
    `shipped`, and a guide it has no name for `unnamed`. Each other guide's difference is taken from
    `shipped`, or from the guide `--against` names. Each model is counted on its own.
+
+   Where the trial's sessions are on two machines, count each machine's replies where its
+   transcripts are. `--write-counts <file>` writes what was counted of each reply: its model,
+   guide, session id and counts, never its text. `--counts <file>` on the other machine adds them
+   to its own count, so the interval is taken over both machines' sessions. A file written by
+   another version of the bench is refused, and `--since` leaves out its older sessions too. Its
+   replies keep the guide names and the verdicts they were counted with, so give both machines the
+   same `--guide` names and the same judge.
 
 The candidate is adopted when, for the rate written down in step 2, the whole interval of the
 difference lies below zero, and no other rate's whole interval lies above zero. Otherwise the
