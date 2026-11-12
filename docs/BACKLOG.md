@@ -34,7 +34,6 @@ Checkbox marks a ticket consumed (plan written, or direct commit landed).
 - [ ] **post-pass-stretcher** — a hook turns Claude's finished plain reply into stretchtext · verdict: pending · needs: a live check that a `turn.step` rewrite is shown and recorded
 - [ ] **opened-from-doc** — `openedFrom`'s comment in `bench/measure.ts` describes the note as 0.5.2 writes it · verdict: defer · promote when: the next change to `bench/measure.ts`
 - [ ] **label-short-forms** — a short form over several sections states their gist, not their topic · verdict: defer · signal: none · promote when: a change with a mechanism none of the six tried shares
-- [ ] **live-label-count** — the live count says how many links are judged labels, by guide · verdict: pending · needs: a decision to put `series-copy` on a live trial
 - [ ] **closing-gist-kept** — the closing stretch's short form is in the block it opens · verdict: pending · needs: what the reader sees when such a stretch opens
 - [ ] **desktop-first-request** — the guide reaches the desktop app's first request · verdict: pending · needs: whether the desktop app's `ui_attach` arrives before its first request
 - [ ] **long-session-drift** — Claude keeps writing stretches deep in a long session · verdict: defer · signal: `node bench/depth.ts` on a reader's transcripts · promote when: its counts show long replies that were sent the guide going plain
@@ -91,6 +90,10 @@ grades when the judge gets a control wrong.
 - The 150-word line is `LONG_WORDS` in `bench/depth.ts` and in `bench/counts.ts`; the 40-word line is
   `MIN_WORDS` in `bench/ab.ts` and `bench/replay.ts` and `SHORT_WORDS` in `bench/counts.ts`. The one
   file all of them load is `bench/measure.ts`, which a run's manifest hashes.
+- `bench/ab.ts` and `bench/live.ts` each start `claude -p` and read its answer, run several calls
+  at a time, stop after `MAX_FAILURES` failed in a row, mend a last line a write cut short, and
+  check a saved label verdict. `ab.ts` runs when loaded, so `live.ts` cannot import its copies,
+  and a run's manifest hashes `bench/grading.ts`, so moving them there refuses runs already begun.
 
 `replay.ts`, `report.ts` and `coverage.ts` feed the README's numbers, so change them when those
 numbers are rerun, and the numbers change once.
@@ -419,15 +422,6 @@ Sonnet). Links judged labels, the closing block's link left out:
 of a task. There its closed replies were no longer than `g0`'s (3,892 words against 3,883 over 72
 answers). Not known: what it does in live sessions, where the writer has not seen the finished
 reply, and under models other than Opus 5.5.
-
-## live-label-count
-
-`bench/live.ts` counts what a reply's text alone decides, and a label needs the judge. A trial of a
-line that aims at labels is read on the share of links in view judged labels, so the count needs a
-judged pass over the trial's replies: `LABELS` from `bench/grading.ts`, the closing block's link
-left out, sessions drawn again for the interval as `differenceOf` does. On 52 live sessions whose
-links were judged (182 of 798 labels), a trial of 55 sessions a guide finds a fall to 0.44 of that
-share 94 times in 100, and a fall that is not there 2 times in 100.
 
 ## closing-gist-kept
 

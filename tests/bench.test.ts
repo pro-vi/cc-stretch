@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'claude-code/testing'
 
-import { counted, differenceOf, FAILURES, guideIn, rateOf, talliesOf } from '../bench/counts.ts'
+import { counted, differenceOf, FAILURES, guideIn, LABEL, rateOf, talliesOf } from '../bench/counts.ts'
 import { measure, openedFrom, render, words } from '../bench/measure.ts'
 import { shortsNamed } from '../bench/opened.ts'
 import { growthOf } from '../hooks/grow.ts'
@@ -91,9 +91,9 @@ describe('live counts', () => {
 
   test('a reply is counted by its words, its stretches, the rules it breaks, what its links hide and what the reader opened', async () => {
     expect(counted('s', `${LONG} ${REWORDED}\n\n${SECTIONS}`, new Set(['Two findings.']))).toEqual({
-      session: 's', skim: 155, full: 163, stretches: 2, broken: ['keeps-short-words'], inView: 2, onSections: 1, opened: 1, read: 159,
+      session: 's', skim: 155, full: 163, stretches: 2, broken: ['keeps-short-words'], inView: 2, onSections: 1, labelLinks: 2, opened: 1, read: 159,
     })
-    expect(counted('s', 'git log --oneline -5')).toEqual({ session: 's', skim: 4, full: 4, stretches: 0, broken: [], inView: 0, onSections: 0 })
+    expect(counted('s', 'git log --oneline -5')).toEqual({ session: 's', skim: 4, full: 4, stretches: 0, broken: [], inView: 0, onSections: 0, labelLinks: 0 })
     // A link inside a stretch drawn open, its short form being two lines, is in view too.
     expect(counted('s', `{{Two\nlines|It {{merged|merged today}}.}}`).inView).toBe(1)
   })
@@ -106,12 +106,24 @@ describe('live counts', () => {
     expect(counted('s', `Done. ${KEPT}`).broken).toEqual(['no-stretch-in-short-reply'])
   })
 
-  test('a failure is counted only in the replies it can happen in, each session on its own', async () => {
+  test('a failure is counted only where it can happen, each session on its own', async () => {
     const replies = [counted('a', `${LONG} ${REWORDED}`), counted('a', `${LONG} ${KEPT}`), counted('a', 'Short.'), counted('b', `${LONG} ${KEPT}`), counted('b', LONG), counted('c', `Done. ${KEPT}`)]
     expect(talliesOf(replies, failureNamed('keeps-short-words'))).toEqual([{ hits: 1, of: 2 }, { hits: 0, of: 1 }])
     expect(talliesOf(replies, failureNamed('a long reply holds no stretch'))).toEqual([{ hits: 0, of: 2 }, { hits: 1, of: 2 }])
     expect(talliesOf(replies, failureNamed('a reply under 40 words holds a stretch'))).toEqual([{ hits: 0, of: 1 }, { hits: 1, of: 1 }])
     expect(rateOf(talliesOf(replies, failureNamed('keeps-short-words')))).toBe(1 / 3)
+  })
+
+  test('a judge\'s verdicts are counted per link in view, a closing block\'s link left out, where they are the reply\'s', async () => {
+    const CLOSING = '{{Status: built.|Status: built.\n\n---\n\n**Next** · ship\n\n---}}'
+    const reply = `${LONG} ${KEPT} ${SECTIONS}\n\n${CLOSING}`
+    const judged = counted('s', reply, undefined, ['gist', 'label', 'label'])
+    expect([judged.inView, judged.labelLinks, judged.labels]).toEqual([3, 2, 1])
+    expect(LABEL.tally(judged)).toEqual({ hits: 1, of: 2 })
+    // Verdicts on another number of links are not this reply's, and a reply with none is in no tally.
+    expect(counted('s', reply, undefined, ['label']).labels).toBe(undefined)
+    expect(LABEL.tally(counted('s', reply))).toEqual({ hits: 0, of: 0 })
+    expect(talliesOf([judged, counted('s', `${LONG} ${KEPT}`, undefined, ['label']), counted('t', reply)], LABEL)).toEqual([{ hits: 2, of: 3 }])
   })
 
   test('two guides differ by their rates, with an interval drawn over sessions that is the same on every run', async () => {

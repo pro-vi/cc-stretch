@@ -251,24 +251,25 @@ const KEPT = `${LONG} {{The build fails.|The build fails on a stale cache.}}`
 const REWORDED = `${LONG} {{The build fails.|CI is broken by a stale cache.}}`
 const liveDir = join(scratch, 'live')
 mkdirSync(liveDir)
-/** Writes a session's transcript: its replies under `guide`, the first followed by a reading note that names its stretch as opened. */
-function transcript(name: string, guide: string, replies: string[], day: string, tail = '') {
+/** Writes a session's transcript into `dir`: its replies under `guide`, each on its day, the first followed by a reading note that names its stretch as opened. */
+function transcript(dir: string, name: string, guide: string, replies: string[], days: string | string[], tail = '') {
   const rows: unknown[] = [{ type: 'api-request-shape', shapeHash: 'shape-1', shape: { system: [{ type: 'text', text: 'You are Claude Code.' }, { type: 'text', text: `Be brief.\n\n${guide}\n\nOther instructions.` }] } }]
   replies.forEach((reply, i) => {
     rows.push({ type: 'user', origin: { kind: 'human' }, message: { role: 'user', content: 'What broke?' } })
     if (i === 1) rows.push({ type: 'attachment', attachment: { type: 'hook_additional_context', content: ['Stretchtext: since your last reply the reader opened "The build fails.".'] } })
     rows.push({ type: 'api-request', id: `request-${i}`, shapeHash: 'shape-1', params: { model: 'claude-opus-5-5' } })
-    rows.push({ type: 'assistant', requestRef: `request-${i}`, timestamp: `${day}T10:00:00.000Z`, message: { role: 'assistant', content: [{ type: 'text', text: reply }], usage: { input_tokens: 10 } } })
+    rows.push({ type: 'assistant', requestRef: `request-${i}`, timestamp: `${typeof days === 'string' ? days : days[i]}T10:00:00.000Z`, message: { role: 'assistant', content: [{ type: 'text', text: reply }], usage: { input_tokens: 10 } } })
   })
   // A request body's row is never parsed, so what follows its opening may be anything.
   const lines = [...rows.map(row => JSON.stringify(row)), '{"type":"api-request-blob", not JSON at all']
-  writeFileSync(join(liveDir, `${name}.jsonl`), `${lines.join('\n')}\n${tail}`)
+  writeFileSync(join(dir, `${name}.jsonl`), `${lines.join('\n')}\n${tail}`)
 }
-for (const n of [1, 2, 3]) transcript(`shipped-${n}`, GUIDE, [REWORDED, n === 1 ? KEPT : REWORDED], n === 3 ? '2026-01-01' : '2026-01-05')
+// The third session under the plugin's guide began before the day a trial might start, and wrote its second reply after it.
+for (const n of [1, 2, 3]) transcript(liveDir, `shipped-${n}`, GUIDE, [REWORDED, n === 1 ? KEPT : REWORDED], n === 3 ? ['2026-01-01', '2026-01-05'] : '2026-01-05')
 // The last line of a session still being written is cut short, and is skipped.
-for (const n of [1, 2, 3]) transcript(`trial-${n}`, TRIAL, [KEPT, KEPT], '2026-01-05', n === 1 ? '{"type":"assis' : '')
+for (const n of [1, 2, 3]) transcript(liveDir, `trial-${n}`, TRIAL, [KEPT, KEPT], '2026-01-05', n === 1 ? '{"type":"assis' : '')
 const liveFiles = readdirSync(liveDir).sort().map(name => join(liveDir, name))
-const live = (args: string[]) => bench(args, {}, LIVE)
+const live = (args: string[], env: Record<string, string> = {}) => bench(args, env, LIVE)
 r = live(['--guide', `candidate=${trialFile}`, ...liveFiles])
 check(
   'live counts name each guide, count its replies by session and print the difference with its interval',
@@ -283,12 +284,49 @@ check(
   r.output,
 )
 r = live(['--guide', `candidate=${trialFile}`, '--since', '2026-01-02', ...liveFiles])
-check('live counts leave out replies written before --since', r.status === 0 && r.output.includes('2 written earlier') && r.output.includes('| replies, in sessions | 4, in 2 | 6, in 3 |'), r.output)
+check('live counts leave out a session begun before --since, the replies it wrote later too', r.status === 0 && r.output.includes('2 in sessions begun earlier') && r.output.includes('| replies, in sessions | 4, in 2 | 6, in 3 |'), r.output)
+r = live(['--guide', `candidate=${trialFile}`, '--sessions', ...liveFiles])
+check('with --sessions, live counts print how many sessions each guide has and each rate can be taken over, and no rate', r.status === 0 && r.output.includes('| replies, in sessions | 6, in 3 | 6, in 3 |') && r.output.includes('| keeps-short-words | 3 | 3 |') && r.output.includes('| a reply under 40 words holds a stretch | 0 | 0 |') && r.output.includes('| a link in view is a label, by the judge | 3 | 3 |') && !r.output.includes('%'), r.output)
 r = live(liveFiles)
 check('a guide no name was given for is counted as unnamed', r.status === 0 && r.output.includes('| | shipped | unnamed |'), r.output)
 const noDay = live(['--since', 'yesterday', ...liveFiles])
 const noFile = live(['--guide', `candidate=${join(scratch, 'no-such-guide.txt')}`, ...liveFiles])
 check('live counts refuse a --since that is no day and a --guide file that cannot be read', noDay.status === 1 && noDay.output.includes('YYYY-MM-DD') && noFile.status === 1 && noFile.output.includes('cannot read'), `${noDay.output}\n${noFile.output}`)
+
+// Labels: the stand-in judge calls a short form that ends in a colon a label. The session under the
+// plugin's guide holds one among its three links, and a closing block whose link is not counted.
+const labelDir = join(scratch, 'labels')
+mkdirSync(labelDir)
+const PLAN = '{{The plan:|The plan: build, then ship.}}'
+const CLOSING = '{{Status:|Status: built.\n\n---\n\n**Next** · ship\n\n---}}'
+transcript(labelDir, 'shipped-a', GUIDE, [`${LONG} ${PLAN} ${KEPT}`, `${LONG} ${KEPT}\n\n${CLOSING}`], '2026-01-05')
+// The trial session's second reply holds no link but its closing block's, so the judge is not asked about it.
+transcript(labelDir, 'trial-a', TRIAL, [`${LONG} ${KEPT}`, `${LONG}\n\n${CLOSING}`], '2026-01-05')
+const labelFiles = readdirSync(labelDir).sort().map(name => join(labelDir, name))
+const verdictFile = join(scratch, 'verdicts.jsonl')
+const labelled = (extra: string[], env: Record<string, string> = {}) => live(['--guide', `candidate=${trialFile}`, '--labels', verdictFile, ...extra, ...labelFiles], env)
+const LABEL_ROW = '| a link in view is a label, by the judge | 1 of 3 (33%) | 0 of 1 (0%) |'
+r = labelled(['--judge', 'haiku'], { STUB_JUDGE: 'labels' })
+check('a judge confused in its labels is asked twice, and the replies go without a verdict', r.status === 0 && r.output.includes("0 have the judge's verdicts and 3 have none") && r.output.includes('| a link in view is a label, by the judge | none | none |') && !existsSync(verdictFile), r.output)
+r = labelled(['--judge', 'haiku'])
+check(
+  'live counts ask the judge about each reply with a link in view, and count labels per link, a closing block\'s left out',
+  r.status === 0 && r.output.includes("3 have the judge's verdicts (stub-haiku) and 0 have none") && r.output.includes(LABEL_ROW) && r.output.includes('- a link in view is a label, by the judge: -33 (-33 to -33)') && rowsIn(scratch, 'verdicts.jsonl').length === 3,
+  r.output,
+)
+const savedVerdicts = readFileSync(verdictFile, 'utf8')
+check('the saved verdicts hold no word of a reply', !savedVerdicts.includes('build') && !savedVerdicts.includes('word1'), savedVerdicts)
+// A last line cut short by an interrupted write is dropped before the next verdict is added.
+appendFileSync(verdictFile, '{"asked":"cut')
+r = labelled(['--judge', 'haiku'], { STUB_FAIL_MATCH: '.' })
+check('saved verdicts are read again without a call, past a last line cut short', r.status === 0 && r.output.includes(LABEL_ROW) && readFileSync(verdictFile, 'utf8') === savedVerdicts, r.output)
+r = labelled([], { STUB_FAIL_MATCH: '.' })
+const noLabels = live(['--judge', 'haiku', ...labelFiles])
+check('without --judge the saved verdicts are counted, and --judge without --labels is refused', r.status === 0 && r.output.includes(LABEL_ROW) && noLabels.status === 1 && noLabels.output.includes('--labels'), `${r.output}\n${noLabels.output}`)
+// With --sessions nothing is asked: a judge that would fail every call is never called, and no file is written.
+const unasked = join(scratch, 'unasked.jsonl')
+r = live(['--sessions', '--labels', unasked, '--judge', 'haiku', ...labelFiles], { STUB_FAIL_MATCH: '.' })
+check('with --sessions the judge is not asked', r.status === 0 && !r.output.includes('asking') && !existsSync(unasked) && r.output.includes('| a link in view is a label, by the judge | 1 |'), r.output)
 
 console.log(failed === 0 ? `all cases hold (scratch: ${scratch})` : `${failed} cases failed (scratch: ${scratch})`)
 process.exit(failed === 0 ? 0 : 1)

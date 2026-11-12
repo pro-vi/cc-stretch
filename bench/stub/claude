@@ -23,8 +23,10 @@ else if (prompt.includes('Output only JSON of the form {"points"')) answer = JSO
 else if (prompt.includes('Write down, as a short numbered list')) answer = '1. Memory is fast.\n2. Redis is shared.'
 else if (prompt.includes('{"verdicts":["yes","no"]}')) answer = JSON.stringify({ verdicts: verdicts(count('points'), 'yes', 'key') })
 else if (prompt.includes('{"verdicts":{"1":"gist"}}')) {
-  const phrases = Math.max(0, ...[...prompt.matchAll(/⟦(\d+)⟧/g)].map(m => Number(m[1])))
-  answer = JSON.stringify({ verdicts: Object.fromEntries(Array.from({ length: phrases }, (_, i) => [String(i + 1), process.env.STUB_JUDGE === 'labels' ? 'maybe' : 'gist'])) })
+  // A phrase marked in the reply is a label when it ends in a colon, and a gist otherwise.
+  const reply = /<reply>\n([\s\S]*)\n<\/reply>/.exec(prompt)?.[1] ?? ''
+  const phrases = [...reply.matchAll(/⟦(\d+)⟧([\s\S]*?)⟦\/\1⟧/g)].map(m => m[2])
+  answer = JSON.stringify({ verdicts: Object.fromEntries(phrases.map((phrase, i) => [String(i + 1), process.env.STUB_JUDGE === 'labels' ? 'maybe' : phrase.trim().endsWith(':') ? 'label' : 'gist'])) })
 } else if (prompt.includes('{"know":["yes"],"never":["no"]}')) answer = JSON.stringify({ know: verdicts(count('points'), 'yes', 'key'), never: verdicts(count('claims'), 'no', 'key') })
 else answer = 'The options are below.\n\n- {{Memory is fast.|Memory is fast, but lost on restart.}}\n- {{SQLite persists.|SQLite persists locally, unshared.}}\n- {{Redis is shared.|Redis is shared across replicas.}}'
 

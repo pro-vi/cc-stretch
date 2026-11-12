@@ -50,9 +50,14 @@ reply whose request is recorded with a guide in its system prompt, it counts: wh
 reply's text (`items-stay-visible` and `closing-block-last` need a task, so they are not counted);
 whether a link in view hides several sections or a list; and whether a reply under 40 words still
 holds a stretch, the live form of `no-stretch-in-short-reply`, since no task says a reply is short.
-From the reading notes it counts the links the reader opened. It calls no model and prints counts
-only. Where the transcripts hold two guides, it prints how their rates differ, with an interval
-taken over sessions. This is the count a guide is adopted on (Adopting a guide, below).
+From the reading notes it counts the links the reader opened. It prints counts only, and calls no
+model unless asked for the label rate: with `--labels <file> --judge <model>`, a judge says of each
+link in view whether its short form is a label, one that only names or announces its long form. A
+closing block's link is left out, as the guide asks for its short form in a bullet of its own. The
+file keeps each verdict under a hash of what the judge was asked, never a reply's text, so a later
+count asks only about new replies. Where the transcripts hold two guides, it prints how their
+rates differ, with an interval taken over sessions. This is the count a guide is adopted on
+(Adopting a guide, below).
 
 ## Read these numbers honestly
 
@@ -76,8 +81,8 @@ node bench/depth.ts ~/.claude/projects/*/*.jsonl
 bun bench/live.ts ~/.claude/projects/*/*.jsonl
 ```
 
-Rewrites and coverage use `claude -p` on your own account. Raw text stays in `bench/out/`, which
-git ignores.
+Rewrites and coverage use `claude -p` on your own account, and so does `live.ts` when given
+`--judge`. Raw text stays in `bench/out/`, which git ignores.
 
 ## Comparing guides
 
@@ -158,19 +163,25 @@ guide replaces the plugin's when it does better there. Three steps:
    misses a point, or makes a forbidden claim. With a few answers per task, the tasks can show that
    a guide breaks something, not that it is better.
 2. **A trial in live sessions.** Before it starts, write down the one rate the candidate is meant
-   to lower, from those `live.ts` prints, and how many sessions each guide gets. Then set the
+   to lower, from those `live.ts` prints, the judge where that rate is the label rate, and how many
+   sessions each guide gets. Then set the
    plugin's `trialGuide` setting, in `/plugin`'s Configure options (as of Claude Code 2.1.302), to
    the absolute path of a file that holds the candidate's text; a tasks run writes each guide it
    ran to `<run>/guide-<arm>.txt`. From then on half of the sessions, picked by their id, carry the
    candidate in place of the plugin's guide, each for the whole session. Work as usual.
-3. **The count.** Once both guides have their sessions, count the replies written since the trial
-   began:
+3. **The count.** Once both guides have their sessions, count the replies of the sessions begun
+   since the trial started:
 
    ```
    bun bench/live.ts --since <the trial's first day> --guide candidate=<file> ~/.claude/projects/*/*.jsonl
    ```
 
-   A variant from `guides.ts` is named without `--guide`. The output calls the plugin's own guide
+   `--since` leaves out every session whose first reply was written before that day (UTC), its
+   later replies too: the trial splits the sessions begun under its setting, and an older one is
+   on neither side. With `--sessions` the command prints only how many sessions each guide has
+   and each rate can be taken over, which tells when the trial has them. Where the rate written
+   down is the label rate, add `--labels <file> --judge <model>`. A variant from `guides.ts` is
+   named without `--guide`. The output calls the plugin's own guide
    `shipped`, and a guide it has no name for `unnamed`. Each other guide's difference is taken from
    `shipped`, or from the guide `--against` names. Each model is counted on its own.
 
