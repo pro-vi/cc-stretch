@@ -19,6 +19,7 @@ export type RuleId =
   | 'not-in-heading-or-table'
   | 'no-stretch-in-short-reply'
   | 'items-stay-visible'
+  | 'series-in-view'
   | 'closing-block-last'
 
 /** One rule's verdict on one answer, with what broke it. */
@@ -109,6 +110,14 @@ export const RULES: readonly Rule[] = [
     appliesTo: task => (task.items?.length ?? 0) > 0,
     breach: (reply, task) => missingItems(reply, task.items ?? []),
   },
+  // As written by Opus 5.5 and Fable 5.2 under Claude Code 2.1.322: a plan or a series the reader
+  // asked for, hidden whole behind a sentence that only announces it ("I would shape it like this.").
+  {
+    id: 'series-in-view',
+    bullet: 'At its shortest, the reply answers on its own.',
+    appliesTo: task => (task.series?.length ?? 0) > 0,
+    breach: ({ skim }, task) => notInSkim(skim, task.series ?? []),
+  },
   {
     id: 'closing-block-last',
     bullet: "If other instructions require a closing block, make it the reply's last stretch.",
@@ -156,6 +165,14 @@ function read(text: string): Read {
   return { parts, all: stretches(parts), links, skim, full }
 }
 
+/** Whether a line names `item`: it holds one of the item's words, in any case. */
+const names = (item: string[], line: string) => item.some(word => unmarked(line).toLowerCase().includes(word.toLowerCase()))
+/** Says which items no line of the skim names, or undefined when it names them all. */
+function notInSkim(skim: string[], items: string[][]): string | undefined {
+  const hidden = items.filter(item => !skim.some(line => names(item, line)))
+  return hidden.length === 0 ? undefined : `not in the skim: ${hidden.map(item => item[0] ?? '').join(', ')}`
+}
+
 /**
  * Which items are hidden or share a stretch: every item must be named in the skim, and the items
  * must pair one to one with distinct links that add words, each on a skim line naming its item.
@@ -163,9 +180,8 @@ function read(text: string): Read {
  * a stretch about something else is not taken for the item's own.
  */
 function missingItems({ skim, links }: Read, items: string[][]): string | undefined {
-  const names = (item: string[], line: string) => item.some(word => unmarked(line).toLowerCase().includes(word.toLowerCase()))
-  const hidden = items.filter(item => !skim.some(line => names(item, line)))
-  if (hidden.length > 0) return `not in the skim: ${hidden.map(item => item[0] ?? '').join(', ')}`
+  const hidden = notInSkim(skim, items)
+  if (hidden !== undefined) return hidden
 
   const candidates = items.map(item =>
     skim

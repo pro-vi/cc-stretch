@@ -47,7 +47,8 @@ can go into an issue as it is.
 how often replies in real sessions go wrong, by the guide and the model that wrote them. For every
 reply whose request is recorded with a guide in its system prompt, it counts: whether a reply of
 150 words or more holds no stretch; each layout rule under Comparing guides that needs only the
-reply's text (`items-stay-visible` and `closing-block-last` need a task, so they are not counted);
+reply's text (`items-stay-visible`, `series-in-view` and `closing-block-last` need a task, so they
+are not counted);
 whether a link in view hides several sections or a list; and whether a reply under 40 words still
 holds a stretch, the live form of `no-stretch-in-short-reply`, since no task says a reply is short.
 From the reading notes it counts the links the reader opened. It prints counts only, and calls no
@@ -91,8 +92,9 @@ are tested here first. `ab.ts` has each guide variant answer the same tasks, the
 answers two ways:
 
 - **Layout rules** (`rules.ts`): checks of the guide's bullets that the text alone can decide, using
-  the plugin's own parser. For example: the long form keeps the short form's words, and each list
-  item stays visible with a stretch of its own. Each rule names the bullet it checks. Rules call no
+  the plugin's own parser. For example: the long form keeps the short form's words, each list
+  item stays visible with a stretch of its own, and each part of a plan or series a task asks for
+  is named before any click. Each rule names the bullet it checks. Rules call no
   model and are worked out again whenever a report runs, so fixing a rule rescores every earlier run.
 - **Grades** (`grading.ts`): a model judge, never told which guide wrote what, checks the skim and
   the full answer against each task's key. These grades are saved, since each one costs a call, with
@@ -133,7 +135,12 @@ is a variant named in `guides.ts`. The first run freezes its inputs in `<run>/ma
 second run with the same inputs picks up where the first stopped; one with any other input (a
 guide, a task, the writer or judge, the Claude Code version, or what Claude is asked: the prompts and
 call flags in `grading.ts`, and the skim they show) is refused. Failed calls are kept as failures and tried again
-on the next run. They never count as grades. A lock lets only one run use a folder at a time.
+on the next run. They never count as grades. A run stops once several calls in a row have failed,
+as a spent usage limit fails every one. Where they failed because the model's safety filter turned
+them down, look before resuming on the same account: with Sonnet 5.5 rewriting live replies under
+Claude Code 2.1.322, six refusals among a run's first fifty-one rewrites were followed by a refusal
+of almost every later one on that account, an invented and harmless reply included, which another
+account answered. A lock lets only one run use a folder at a time.
 
 The report shows each rule's own count. Where someone overrode it, the adjudicated count appears
 next to it, and every override is listed with its reason. An override counts only for the answer

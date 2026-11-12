@@ -44,6 +44,8 @@ const COPY = '- To write a long form, copy its short form and add words to the c
 const SERIES = '- A short form says what its long form says, in fewer words, however many that takes. When the long form is a plan or a series, its short form is that series with each part cut to a few words, never a sentence that only announces it. Example: "{{Next: key the cache on the lockfile; drop the retry; ship on Friday.|Next: key the CI cache on the lockfile as well as `package.json`; drop the retry, which only hides the stale read; and ship on Friday, once CI has passed twice.}}"'
 
 /** Each variant as the lines it adds and the bullet each goes after, in reading order. */
+const AFTER_COPY = '- To write a long form, copy its short form'
+const SERIES_NAMED = '- A short form says what its long form says, in fewer words, however many that takes. When the long form is a plan or a series, its short form is that series with each part named in a few words. A count of the parts ("three fixes"), a word for what remains ("the rest", "a few follow-ups") and a sentence that only announces them are not short forms: name each part. Example: "{{Next: key the cache on the lockfile; drop the retry; ship on Friday.|Next: key the CI cache on the lockfile as well as `package.json`; drop the retry, which only hides the stale read; and ship on Friday, once CI has passed twice.}}"'
 const RECIPES: Readonly<Record<string, readonly (readonly [anchor: string, line: string])[]>> = {
   g0: [],
   /** Grow inside the sentence. */
@@ -82,6 +84,10 @@ const RECIPES: Readonly<Record<string, readonly (readonly [anchor: string, line:
   'series-gist': [[LIST, SERIES]],
   /** series-gist with copy-then-add: a series for a short form drops or reorders its words more often, which the copy line is for. */
   'series-copy': [[LIST, SERIES], [AFTER_KEEPS, COPY]],
+  /** series-copy, naming the short forms that stand in for a series without saying it: writing the series tasks from scratch under series-copy, Opus 5.5 still wrote "two bugs fixed" and "the rest". */
+  'series-named': [[LIST, SERIES_NAMED], [AFTER_KEEPS, COPY]],
+  /** series-named, with a line against dropping a detail: under series-copy the opened answers left out more of a task's lesser points. */
+  'series-kept': [[LIST, SERIES_NAMED], [AFTER_KEEPS, COPY], [AFTER_COPY, '- Leave no detail out to keep a long form close to its short form: a detail with no short form of its own goes into the long form nearest to it.']],
   /** A sentence that only introduces what follows stays in view as plain text, and what it introduces is stretched. */
   'lead-in-outside': [[LIST, '- A sentence that only introduces what follows it, such as "Here is the plan:", "Two things changed." or "I would shape it like this.", is never a short form. Leave it as plain text outside the stretch, and stretch what it introduces, each part under a short form that states it.']],
   /** A stretch that hides several sections or a list gets a one-line gist for its short form, as the closing block does. */

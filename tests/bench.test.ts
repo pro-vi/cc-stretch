@@ -199,6 +199,19 @@ describe('layout rules', () => {
     cases('no-stretch-in-short-reply', { needsNoStretch: true }, ['{{Use git log.|Use git log --oneline -5.}}'], ['git log --oneline -5', 'CSV, JSON, Parquet'])
   })
 
+  test('series-in-view: each part of a series asked for is named before any click', async () => {
+    const SERIES = [['lockfile'], ['retry'], ['friday']]
+    cases('series-in-view', { series: SERIES }, [
+      '{{From that I would shape it like this.|From that I would shape it like this: key the cache on the lockfile; drop the retry; ship on Friday.}}',
+      '{{Three steps come next.|Three steps come next: key the cache on the lockfile, drop the retry, ship on Friday.}}',
+      'First, key the cache on the lockfile. {{Two more steps follow.|Two more steps follow: drop the retry, then ship on Friday.}}',
+    ], [
+      '{{Next: key the cache on the lockfile; drop the retry; ship on Friday.|Next: key the CI cache on the lockfile as well; drop the retry, which hides the stale read; and ship on Friday, once CI passes.}}',
+      '- {{Key the cache on the lockfile.|Key the CI cache on the lockfile as well.}}\n- Drop the retry.\n- Ship on FRIDAY.',
+      'Key the cache on the lockfile, drop the retry and ship on Friday.',
+    ])
+  })
+
   test('items-stay-visible: each list item stays in view with a stretch of its own', async () => {
     const own = (name: string) => `{{${name} is one option.|${name} is one option, with its tradeoff.}}`
     cases('items-stay-visible', { items: ITEMS }, [
@@ -288,14 +301,16 @@ describe('run manifests and judge answers', () => {
 })
 
 describe('tasks and guide variants', () => {
-  test('every task is well formed: unique ids, items named by words, short tasks without items', async () => {
+  test('every task is well formed: unique ids, items and series named by words, short tasks without items', async () => {
     expect(new Set(TASKS.map(t => t.id)).size).toBe(TASKS.length)
     for (const task of TASKS) {
       expect([task.id, task.needsNoStretch === true && (task.items?.length ?? 0) > 0]).toEqual([task.id, false])
-      for (const item of task.items ?? []) expect([task.id, item.length > 0 && item.every(word => word.trim() !== '')]).toEqual([task.id, true])
+      for (const item of [...(task.items ?? []), ...(task.series ?? [])]) expect([task.id, item.length > 0 && item.every(word => word.trim() !== '')]).toEqual([task.id, true])
+      // A series is named in a task's own evidence by the words its rule looks for, or the rule could never hold.
+      if (task.kind !== 'rewrite') for (const part of task.series ?? []) expect([task.id, part[0], part.some(word => `${task.question}\n${task.evidence}`.toLowerCase().includes(word.toLowerCase()))]).toEqual([task.id, part[0], true])
       expect([task.id, task.key.know.length > 0]).toEqual([task.id, true])
     }
-    expect(TASKS.filter(t => t.heldOut === true).map(t => t.id)).toEqual(['rollout-evidence', 'search-options-zh', 'auth-options', 'parser-status'])
+    expect(TASKS.filter(t => t.heldOut === true).map(t => t.id)).toEqual(['rollout-evidence', 'search-options-zh', 'auth-options', 'parser-status', 'review-fixes', 'cleanup-left', 'estimate-sources', 'incident-plan-zh'])
   })
 
   test('g0 is the plugin guide, and additive variants only add their declared lines', async () => {

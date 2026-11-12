@@ -80,6 +80,10 @@ tasks(halt, 'g0', { STUB_FAIL_MATCH: 'parseDate|flaky upload' }, ['--limit', '3'
 r = tasks(halt, 'g0', { STUB_RESOLVE: '-v2' }, ['--limit', '3'], '1')
 check('a model change stops the run before its other jobs', r.status === 1 && r.output.includes('stopped: a model changed') && r.output.includes('0 of 2 jobs finished'), r.output)
 
+// Calls failing in a row stop a run before it has sent every job.
+r = tasks(join(scratch, 'failing'), 'g0', { STUB_FAIL_MATCH: '.' }, ['--limit', '9'], '1')
+check('eight calls failing in a row stop a run', r.status === 1 && r.output.includes('stopped: 8 calls failed in a row') && r.output.includes('0 of 9 jobs finished, 8 failed'), r.output)
+
 // A resume cuts away a last line left by an interrupted write before appending, so its rows stay readable.
 const cut = join(scratch, 'cut')
 tasks(cut, 'g0', { STUB_JUDGE: 'key' })
@@ -109,7 +113,9 @@ check(
   r.status === 0 && report.status === 0 &&
     report.output.includes('Layout rules, tasks for choosing a guide') && report.output.includes('Layout rules, held-out tasks') &&
     report.output.includes('| no-stretch-in-short-reply | 2 / 2 |') && report.output.includes('| items-stay-visible | 2 / 3 |') &&
-    report.output.includes('| items-stay-visible | 3 / 3 |') && !report.output.includes('g7, 1, cache-options: items-stay-visible'),
+    report.output.includes('| items-stay-visible | 3 / 3 |') && !report.output.includes('g7, 1, cache-options: items-stay-visible') &&
+    // The stand-in's reply names no part of any series a task asks for.
+    report.output.includes('| series-in-view | 8 / 8 |') && report.output.includes('| series-in-view | 4 / 4 |'),
   `${r.output}\n${report.output}`,
 )
 

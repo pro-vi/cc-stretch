@@ -21,6 +21,7 @@ Checkbox marks a ticket consumed (plan written, or direct commit landed).
 - [ ] **open-colour-gap** — opened words are in their colour from their first frame · verdict: defer · signal: none · promote when: the gap shows in a recorded take
 - [ ] **wrap-across-styles** — a style change inside a word is never a place to break a row · verdict: direct · signal: a row that starts with `.` after a link, or a pressed word that moves a row on the first frame of opening · promote when: now; it breaks the promise that words on screen stay where they are
 - [ ] **refusal-as-answer** — a call the safety filter stopped counts as a failed call, never as an answer · verdict: direct · signal: an `ok` row whose text says it was "stopped by a safety classifier"
+- [ ] **refusal-stop-says-so** — a run stopped by safety-filter refusals says that, and is not resumed on the same account unseen · verdict: direct · signal: `safeguards flagged this message` in a run's log
 - [ ] **lead-in-bold-sentence** — a bold sentence ends the words before a lone period, as a plain one does · verdict: direct
 - [ ] **nested-note-names** — the note names a lone period inside an opened long form by its words, not "." · verdict: direct
 - [ ] **dead-letter** — a stretch with nothing on screen to press takes no keyboard letter · verdict: direct
@@ -97,6 +98,17 @@ grades when the judge gets a control wrong.
 
 `replay.ts`, `report.ts` and `coverage.ts` feed the README's numbers, so change them when those
 numbers are rerun, and the numbers change once.
+
+## refusal-stop-says-so
+
+With Sonnet 5.5 rewriting 60 live replies under Claude Code 2.1.322, six of a run's first fifty-one
+rewrites failed with "Sonnet 5.5's safeguards flagged this message", and almost every later one on
+that account did too: an invented reply about cache options was refused there and answered on
+another account, while a plain prompt was answered on both. `bench/ab.ts` stopped after eight
+failures in a row, as it should, and said only that; resumed, it sent the refused prompts again.
+Fix shape: when the failures that stop a run are such refusals, the stop line says so and says
+that a resume sends them again. Not known: how long an account stays that way, and what in a
+rewrite request draws the first refusals.
 
 ## letters-with-ime
 
@@ -344,12 +356,14 @@ code rather than retyped; arms `g0` and `g0` without that paragraph. It touches 
 
 ## fresh-held-out
 
-The four `heldOut` tasks in `bench/tasks.ts` were read while `shortened-growth`,
+The first four `heldOut` tasks in `bench/tasks.ts` were read while `shortened-growth`,
 `shortened-growth-words` and `shortened-growth-last-words` were shaped, as the criterion written for
-each of those runs says, and the report splits only the layout-rule table by `heldOut`. Fix shape: write
-four to six tasks before looking at any candidate's answers, keep them in a `--tasks` file run in
-their own folder once, as the guard before a live trial (`bench/README.md`, Adopting a guide); adding
-them to `TASKS` would make every 24-task run folder refuse to resume.
+each of those runs says, and the report splits only the layout-rule table by `heldOut`. The four
+held-out series tasks were written after `series-copy`, and before it answered any of them. Fix
+shape for a later variant: write four to six tasks before looking at any candidate's answers, keep
+them in a `--tasks` file run in their own folder once, as the guard before a live trial
+(`bench/README.md`, Adopting a guide). A task added to `TASKS` makes every run folder begun before
+it refuse to resume.
 
 ## unreported-outcomes
 
@@ -421,7 +435,25 @@ Sonnet). Links judged labels, the closing block's link left out:
 `series-copy` then passed the 24 tasks as a guard: nothing happened only under it in 2 of 3 repeats
 of a task. There its closed replies were no longer than `g0`'s (3,892 words against 3,883 over 72
 answers). Not known: what it does in live sessions, where the writer has not seen the finished
-reply, and under models other than Opus 5.5.
+reply.
+
+Measured the same day on answers written from scratch: the twelve series tasks in `bench/tasks.ts`
+and the rule `series-in-view` (Opus 5.5 and Sonnet 5.5 at xhigh effort, Claude Code 2.1.322; a part
+the closed reply named in words the rule did not look for was overridden, 17 times in 288 answers).
+
+- All twelve tasks, 36 answers a guide: Opus broke the rule in 10 under `g0` and 9 under
+  `series-copy`; Sonnet in 12 and 6. Under `series-copy` Opus still wrote short forms that count
+  the parts or name the remainder ("two bug fixes", "plus three bug fixes", "the rest").
+- `series-named` adds to the series line that a count of the parts, a word for what remains and a
+  sentence that only announces them are not short forms. On the four held-out tasks, 24 answers a
+  guide: Opus broke the rule in 7 under `g0`, 7 under `series-copy` and 0 under `series-named`;
+  Sonnet in 7, 3 and 4.
+- Under both variants an opened answer left out one or two more of a task's lesser points than
+  under `g0`, and a line against that (`series-kept`) did not change it for Sonnet.
+
+One guide differed between two runs of the same tasks by about as much as two guides did within
+one, and the breaches sat in a few tasks, so twenty-four answers a guide settle only a large
+difference.
 
 ## closing-gist-kept
 
