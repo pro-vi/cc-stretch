@@ -479,6 +479,13 @@ tests were written down before the runs with the older matching, under which bot
 "rewording no worse". Counts of `keeps-short-words` from before 2026-11-11, here and under
 `closing-gist-kept`, were taken with the older matching and were not taken again.
 
+Fable 5.2 wrote the same rewrites under `g0` and `series-named` for 42 of the 60 replies, once
+each, before the run was stopped at a usage limit set beforehand. Under `g0` it wrote too few
+labels for the label test to be read: 7 of 114 links, where the test needs 25, against 4 of 179
+under `series-named`. The top three points a closed reply carries went from 68% to 80% and the
+closed reply from 15% of the words to 27%. `keeps-short-words` broke in 1 of 42 rewrites under
+each guide with the older matching, and in none with the newer.
+
 One guide differed between two runs of the same tasks by about as much as two guides did within
 one, and the breaches sat in a few tasks, so twenty-four answers a guide settle only a large
 difference.
