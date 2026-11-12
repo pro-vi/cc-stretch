@@ -439,7 +439,7 @@ reply.
 
 Measured the same day on answers written from scratch: the twelve series tasks in `bench/tasks.ts`
 and the rule `series-in-view` (Opus 5.5 and Sonnet 5.5 at xhigh effort, Claude Code 2.1.322; a part
-the closed reply named in words the rule did not look for was overridden, 17 times in 288 answers).
+the closed reply named in words the rule did not look for was overridden, 19 times in 384 answers).
 
 - All twelve tasks, 36 answers a guide: Opus broke the rule in 10 under `g0` and 9 under
   `series-copy`; Sonnet in 12 and 6. Under `series-copy` Opus still wrote short forms that count
@@ -450,6 +450,17 @@ the closed reply named in words the rule did not look for was overridden, 17 tim
   Sonnet in 7, 3 and 4.
 - Under both variants an opened answer left out one or two more of a task's lesser points than
   under `g0`, and a line against that (`series-kept`) did not change it for Sonnet.
+- Fable 5.2 on all twelve, 48 answers a guide: it broke the rule in 15 under `g0` and 5 under
+  `series-named`, and its first reading missed 45 of the tasks' must-know points against 16.
+  Opened, its answers left out 4 points against 1.
+- `series-named` passed the 24 older tasks as a guard, with one case set aside: a list item of 13
+  words written out whole, where `items-stay-visible` asks for a stretch on every item.
+
+On rewrites of 60 more live replies, not chosen for holding a label, `series-copy` under Opus 5.5
+took links judged labels from 68 of 599 to 51 of 737 and the top three points a closed reply
+carries from 67% to 76%, and broke `keeps-short-words` in 6 of 120 rewrites against 2 of 119. All
+of the fall in labels was in the 17 replies whose live version held one. Sonnet 5.5 could not be
+read as a writer there (`refusal-stop-says-so`).
 
 One guide differed between two runs of the same tasks by about as much as two guides did within
 one, and the breaches sat in a few tasks, so twenty-four answers a guide settle only a large

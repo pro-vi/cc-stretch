@@ -590,7 +590,7 @@ $ grep -rln "X-Auth-Token" services/
 services/billing/client.py
 services/reports/fetch.py
 services/reports/export.py`,
-    series: [['timeout'], ['retr'], ['tls'], ['json', 'log format'], ['cache'], ['x-auth-token', 'legacy header', 'legacy_header']],
+    series: [['timeout', '10s', '10 s'], ['retr'], ['tls'], ['json', 'log format'], ['cache'], ['x-auth-token', 'legacy header', 'legacy_header']],
     key: {
       know: [
         'You must act: three files in billing and reports still send X-Auth-Token, which 2.4 no longer reads.',
@@ -680,7 +680,7 @@ Features: export to Parquet; per-project API tokens.
 Fixes: a crash on a CSV file with an empty header row; wrong totals when a filter and a group-by are combined; the date picker ignoring the user's time zone.
 Breaking: the config key \`auth.token\` is renamed \`auth.api_token\`. 3.2 reads only the new name, and stops at startup when it finds the old one.
 Not in 3.2: single sign-on, moved to 3.3.`,
-    series: [['auth.api_token', 'auth.token'], ['parquet'], ['per-project', 'api tokens'], ['csv'], ['totals', 'group-by', 'group by'], ['time zone', 'timezone', 'date picker']],
+    series: [['auth.api_token', 'auth.token'], ['parquet'], ['per-project', 'api tokens'], ['csv'], ['totals', 'group-by', 'group by'], ['time zone', 'time-zone', 'timezone', 'date picker']],
     key: {
       know: [
         'To upgrade, rename the config key auth.token to auth.api_token: 3.2 stops at startup on the old name.',
