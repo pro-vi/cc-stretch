@@ -462,6 +462,23 @@ carries from 67% to 76%, and broke `keeps-short-words` in 6 of 120 rewrites agai
 of the fall in labels was in the 17 replies whose live version held one. Sonnet 5.5 could not be
 read as a writer there (`refusal-stop-says-so`).
 
+`series-named` on the same 60 replies, in a run of its own: labels from 60 of 639 to 35 of 749,
+the top three points from 69% to 79%, the closed reply from 20% of the words to 29%, and
+`keeps-short-words` broken in 8 of 120 rewrites against 3 of 120. The fall in labels was this time
+in the 43 replies whose live version held none.
+
+Every stretch `keeps-short-words` flagged in those two runs of 60 replies was then read. In 17 of
+the 19 flagged rewrites no word was replaced: the long form held a word of the short form inside a
+longer piece, a link's last word joined to its target (`[forum thread](https://…)`) or a file's
+name at the end of its path, and the plugin, which matched whole pieces, drew that word again
+instead of keeping it. Both guides did it, the variants more often, since they put the parts of a
+series, often links and files, into the short form. `hooks/grow.ts` now takes a link as one piece
+that holds its label's words, and a path as holding the file's name it ends in, and with that
+matching the two runs count 0 and 0 rewrites under `g0` and 1 each under the variants. The two
+tests were written down before the runs with the older matching, under which both variants failed
+"rewording no worse". Counts of `keeps-short-words` from before 2026-11-11, here and under
+`closing-gist-kept`, were taken with the older matching and were not taken again.
+
 One guide differed between two runs of the same tasks by about as much as two guides did within
 one, and the breaches sat in a few tasks, so twenty-four answers a guide settle only a large
 difference.
