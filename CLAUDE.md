@@ -18,8 +18,9 @@ and in time a guide chosen for each model Claude Code runs.
 
 ## Where each promise is kept
 
-- How Claude writes: `hooks/guide.ts`, sent with every session. Change it only through the guide
-  bench (`bench/README.md`). A new way Claude gets stretchtext wrong first becomes a rule in
+- How Claude writes: `hooks/guide.ts`, sent with every session. It stays short and straightforward,
+  one-shot examples aside. Change it only through the guide bench (`bench/README.md`). A new way
+  Claude gets stretchtext wrong first becomes a rule in
   `bench/rules.ts`, with examples that must fail and pass in `tests/bench.test.ts`; then the guide
   change that should fix it becomes a variant in `bench/guides.ts` and answers the bench's tasks
   beside the current guide, held-out tasks included. A variant that passes them is then adopted on
