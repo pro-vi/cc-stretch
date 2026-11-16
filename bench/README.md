@@ -48,9 +48,10 @@ how often replies in real sessions go wrong, by the guide and the model that wro
 reply whose request is recorded with a guide in its system prompt, it counts: whether a reply of
 150 words or more holds no stretch; each layout rule under Comparing guides that needs only the
 reply's text (`items-stay-visible`, `series-in-view` and `closing-block-last` need a task, so they
-are not counted);
-whether a link in view hides several sections or a list; and whether a reply under 40 words still
-holds a stretch, the live form of `no-stretch-in-short-reply`, since no task says a reply is short.
+are not counted); `keeps-short-words` once more with a closing block's stretch left out, since a
+gist of that block written as a new sentence is in none of its lines; whether a link in view hides
+several sections or a list; and whether a reply under 40 words still holds a stretch, the live form
+of `no-stretch-in-short-reply`, since no task says a reply is short.
 From the reading notes it counts the links the reader opened. It prints counts only, and calls no
 model unless asked for the label rate: with `--labels <file> --judge <model>`, a judge says of each
 link in view whether its short form is a label, one that only names or announces its long form. A

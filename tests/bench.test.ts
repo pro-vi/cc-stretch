@@ -99,9 +99,9 @@ describe('live counts', () => {
 
   test('a reply is counted by its words, its stretches, the rules it breaks, what its links hide and what the reader opened', async () => {
     expect(counted('s', `${LONG} ${REWORDED}\n\n${SECTIONS}`, new Set(['Two findings.']))).toEqual({
-      session: 's', skim: 155, full: 163, stretches: 2, broken: ['keeps-short-words'], inView: 2, onSections: 1, labelLinks: 2, opened: 1, read: 159,
+      session: 's', skim: 155, full: 163, stretches: 2, broken: ['keeps-short-words'], dropsWordsOutsideBlock: true, inView: 2, onSections: 1, labelLinks: 2, opened: 1, read: 159,
     })
-    expect(counted('s', 'git log --oneline -5')).toEqual({ session: 's', skim: 4, full: 4, stretches: 0, broken: [], inView: 0, onSections: 0, labelLinks: 0 })
+    expect(counted('s', 'git log --oneline -5')).toEqual({ session: 's', skim: 4, full: 4, stretches: 0, broken: [], dropsWordsOutsideBlock: false, inView: 0, onSections: 0, labelLinks: 0 })
     // A link inside a stretch drawn open, its short form being two lines, is in view too.
     expect(counted('s', `{{Two\nlines|It {{merged|merged today}}.}}`).inView).toBe(1)
   })
@@ -109,9 +109,19 @@ describe('live counts', () => {
   test('every layout rule that needs no task is counted, and a short reply by the rule for short replies', async () => {
     expect(FAILURES.map(failure => failure.name)).toEqual([
       'a long reply holds no stretch', 'keeps-short-words', 'short-form-inline', 'short-form-has-words', 'adds-words', 'not-in-heading-or-table',
-      'a link hides several sections or a list', 'a reply under 40 words holds a stretch',
+      'keeps-short-words, a closing block\'s stretch left out', 'a link hides several sections or a list', 'a reply under 40 words holds a stretch',
     ])
     expect(counted('s', `Done. ${KEPT}`).broken).toEqual(['no-stretch-in-short-reply'])
+  })
+
+  test('keeps-short-words is counted again with a closing block\'s stretch left out', async () => {
+    // A gist written as a new sentence: no line of the block holds its words.
+    const CLOSING_REWORDED = '{{Status: built.|---\n\n**Next** · ship\n\n---}}'
+    const gistOnly = counted('a', `${LONG} ${KEPT}\n\n${CLOSING_REWORDED}`)
+    expect([gistOnly.broken, gistOnly.dropsWordsOutsideBlock]).toEqual([['keeps-short-words'], false])
+    const elsewhere = counted('a', `${LONG} ${REWORDED}\n\n${CLOSING_REWORDED}`)
+    expect([elsewhere.broken, elsewhere.dropsWordsOutsideBlock]).toEqual([['keeps-short-words'], true])
+    expect(talliesOf([gistOnly, elsewhere, counted('a', 'Short.')], failureNamed('keeps-short-words, a closing block\'s stretch left out'))).toEqual([{ hits: 1, of: 2 }])
   })
 
   test('a failure is counted only where it can happen, each session on its own', async () => {
@@ -145,6 +155,7 @@ describe('live counts', () => {
     expect(() => countedIn([{ ...row, guide: undefined }])).toThrow('row 1 is no counted reply')
     expect(() => countedIn([row, { ...row, counted: { ...row.counted, full: '170' } }])).toThrow('row 2 is no counted reply')
     expect(() => countedIn([{ ...row, counted: { ...row.counted, labels: -1 } }])).toThrow('row 1 is no counted reply')
+    expect(() => countedIn([{ ...row, counted: { ...row.counted, dropsWordsOutsideBlock: undefined } }])).toThrow('row 1 is no counted reply')
     expect(() => countedIn([{ ...row, judges: 'a-judge' }])).toThrow('row 1 is no counted reply')
     expect(() => countedIn(['a reply'])).toThrow('row 1 is no counted reply')
     expect(() => countedIn([{ ...row, begun: 'yesterday' }])).toThrow('row 1 is no counted reply')

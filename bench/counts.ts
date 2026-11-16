@@ -7,7 +7,7 @@ import type { Stretch } from '../hooks/parse.ts'
 import type { Label } from './grading.ts'
 import { draw, measure } from './measure.ts'
 import type { Measure } from './measure.ts'
-import { hiddenIn, isRuleId, RULES, verdictsOf } from './rules.ts'
+import { dropsWords, hiddenIn, isRuleId, RULES, verdictsOf } from './rules.ts'
 import type { Hidden, RuleId } from './rules.ts'
 
 /** The words from which a reply counts as long: the bar depth.ts sets, taken here on the words with every stretch open. */
@@ -25,6 +25,12 @@ export type Counted = Measure & {
   stretches: number
   /** The layout rules it breaks: those that need no task, and `no-stretch-in-short-reply` for a reply under SHORT_WORDS. */
   broken: RuleId[]
+  /**
+   * Whether it breaks `keeps-short-words` in a stretch other than a closing block's, as `hiddenIn`
+   * reads one from the stretch's own long form. The guide asks for that block's short form in a
+   * bullet of its own: a gist, which is in no line of the block when written as a new sentence.
+   */
+  dropsWordsOutsideBlock: boolean
   /** Its links in view, how many of them hide several sections or a list, and how many the label count takes. */
   inView: number
   onSections: number
@@ -35,8 +41,13 @@ export type Counted = Measure & {
   opened?: number
 }
 
+/** What a stretch hides, read from its long form with every stretch in it open. */
+const hidesOf = (stretch: Stretch) => hiddenIn(draw(stretch.long ?? [], 'all'))
+/** Whether a stretch that hides `hidden` holds a closing block. */
+const isClosingBlock = (hidden: Hidden | undefined) => hidden === 'status block'
+
 /** Whether the label count takes a link that hides `hidden`: a closing block's is left out, as another bullet of the guide asks for its short form. */
-export const takesLabel = (hidden: Hidden | undefined) => hidden !== 'status block'
+export const takesLabel = (hidden: Hidden | undefined) => !isClosingBlock(hidden)
 
 /**
  * One reply's counts. `verdicts`, where the label judge was asked, are its verdicts on the reply's
@@ -49,13 +60,15 @@ export function counted(session: string, reply: string, opened?: ReadonlySet<str
     inView.push(link)
     return drawn
   })
-  const hides = inView.map(link => hiddenIn(draw(link.long ?? [], 'all')))
+  const hides = inView.map(hidesOf)
+  const all = stretches(parts)
   const sizes = measure(reply, opened)
   return {
     session,
     ...sizes,
-    stretches: stretches(parts).filter(isOpenable).length,
+    stretches: all.filter(isOpenable).length,
     broken: verdictsOf(reply, sizes.full < SHORT_WORDS ? { needsNoStretch: true } : {}).filter(verdict => !verdict.holds).map(verdict => verdict.rule),
+    dropsWordsOutsideBlock: all.some(stretch => dropsWords(stretch) && !isClosingBlock(hidesOf(stretch))),
     inView: inView.length,
     onSections: hides.filter(hidden => hidden === 'sections').length,
     labelLinks: hides.filter(takesLabel).length,
@@ -77,11 +90,12 @@ export function countedIn(rows: readonly unknown[]): CountedRow[] {
   const isCount = (value: unknown) => typeof value === 'number' && Number.isInteger(value) && value >= 0
   return rows.map((row, i) => {
     const { model, guide, begun, counted: counts, judges } = fields(row)
-    const { session, broken, skim, full, stretches: openable, inView, onSections, labelLinks, read, labels, opened } = fields(counts)
+    const { session, broken, dropsWordsOutsideBlock, skim, full, stretches: openable, inView, onSections, labelLinks, read, labels, opened } = fields(counts)
     const isRow =
       typeof model === 'string' && typeof guide === 'string' && typeof session === 'string' &&
       typeof begun === 'string' && /^(\d{4}-\d{2}-\d{2})?$/.test(begun) &&
       Array.isArray(broken) && broken.every(rule => typeof rule === 'string' && isRuleId(rule)) &&
+      typeof dropsWordsOutsideBlock === 'boolean' &&
       (judges === undefined || (Array.isArray(judges) && judges.every(judge => typeof judge === 'string'))) &&
       [skim, full, openable, inView, onSections, labelLinks].every(isCount) && [read, labels, opened].every(count => count === undefined || isCount(count))
     if (!isRow) throw new Error(`row ${i + 1} is no counted reply`)
@@ -109,6 +123,8 @@ export const FAILURES: readonly Failure[] = [
   perReply('a long reply holds no stretch', isLong, reply => reply.stretches === 0),
   // Every layout rule that needs no task, so a rule added to rules.ts is counted here too.
   ...RULES.filter(rule => rule.appliesTo({})).map(({ id }) => perReply(id, isStretched, breaks(id))),
+  // The same rule over the same replies. The plain row above still counts a closing block's gist.
+  perReply("keeps-short-words, a closing block's stretch left out", isStretched, reply => reply.dropsWordsOutsideBlock),
   perReply('a link hides several sections or a list', isStretched, reply => reply.onSections > 0),
   perReply(`a reply under ${SHORT_WORDS} words holds a stretch`, reply => reply.full < SHORT_WORDS, breaks('no-stretch-in-short-reply')),
 ]

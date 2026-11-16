@@ -4,6 +4,7 @@
 // rescores every earlier run. Whether the skim tells the reader what they need is a model's
 // judgment instead, in grading.ts.
 // It also holds `hiddenIn`, which is no rule: the corpus report uses it to tell what a link hides.
+// And `dropsWords`, the test `keeps-short-words` makes of one stretch, which the live count makes again.
 import { growthOf } from '../hooks/grow.ts'
 import { HEADING, LIST_ITEM, QUOTE, TABLE_ROW } from '../hooks/layout.ts'
 import { drawnAs, isOpenable, isRule, parse, stretches } from '../hooks/parse.ts'
@@ -43,6 +44,9 @@ const added = (stretch: Stretch) => {
   return g.before + g.between + g.after
 }
 
+/** Whether a link's long form lacks a word of its short form, or holds them in another order: what `keeps-short-words` looks for. */
+export const dropsWords = (stretch: Stretch) => drawnAs(stretch) === 'link' && growthOf(stretch.short, stretch.long ?? []).missing > 0
+
 /** Whether drawn text holds a block between two rules, the shape a closing block takes. */
 const holdsRuledBlock = (drawn: string) => drawn.split('\n').filter(isRule).length >= 2
 
@@ -52,7 +56,7 @@ export const RULES: readonly Rule[] = [
     bullet: 'The long form keeps every word of the short form, in the same order, and grows around them.',
     appliesTo: () => true,
     breach: ({ all }) => {
-      const broken = all.find(s => drawnAs(s) === 'link' && growthOf(s.short, s.long ?? []).missing > 0)
+      const broken = all.find(dropsWords)
       return broken && `the long form of ${quoted(broken.short)} drops or reorders its words`
     },
   },
