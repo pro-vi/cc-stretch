@@ -27,15 +27,17 @@
 // ignores.
 import { execFile, execFileSync } from 'node:child_process'
 import { hash } from 'node:crypto'
-import { appendFileSync, closeSync, existsSync, mkdirSync, mkdtempSync, openSync, readdirSync, readFileSync, readSync, rmSync, statSync, truncateSync, writeFileSync } from 'node:fs'
+import { appendFileSync, closeSync, existsSync, mkdirSync, mkdtempSync, openSync, readdirSync, readFileSync, readSync, statSync, truncateSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { parseArgs } from 'node:util'
 import { growthOf } from '../hooks/grow.ts'
 import { drawnAs, parse, stretches } from '../hooks/parse.ts'
+import { CLOSING, closingOf } from './closing.ts'
 import { ANSWER, CHECK, claimsOf, claudeArgs, gradesOf, KEY, LABELS, pointsOf, POINTS, READ, readChecks, readKey, readLabels, readPoints, resultOf, REWRITE } from './grading.ts'
 import type { Claim, Grade, Label } from './grading.ts'
 import { VARIANTS } from './guides.ts'
+import { lock } from './lock.ts'
 import { differences, messageOf, readManifest, rowsOf } from './manifest.ts'
 import type { Manifest } from './manifest.ts'
 import { draw, marked, recall, render, VALID_RECALL, words } from './measure.ts'
@@ -210,31 +212,13 @@ function openRun(out: string, current: Manifest, guides: Record<string, string>)
   writeFileSync(file, `${JSON.stringify(current, null, 2)}\n`, { flag: 'wx' })
 }
 
-/** Whether process `pid` is running; one owned by another user answers EPERM, and is running. */
-function isRunning(pid: number): boolean {
+/** Holds `out` for this run, or stops where another run has it. */
+function hold(out: string) {
   try {
-    return process.kill(pid, 0)
+    lock(out)
   } catch (error) {
-    return error instanceof Error && 'code' in error && error.code === 'EPERM'
+    fail(messageOf(error))
   }
-}
-
-/**
- * Holds `out` for this process until it exits, before anything costly runs: two runs appending to one
- * folder would each answer every task, and one's repair of a cut line could drop the other's row. A
- * lock whose process has gone, as after a crash, is taken over.
- */
-function lock(out: string) {
-  mkdirSync(out, { recursive: true })
-  const file = join(out, 'run.lock')
-  try {
-    writeFileSync(file, String(process.pid), { flag: 'wx' })
-  } catch {
-    const holder = Number(readFileSync(file, 'utf8'))
-    if (Number.isInteger(holder) && holder > 0 && isRunning(holder)) fail(`${out} is in use by another run (process ${holder}); wait for it, or use another --out`)
-    writeFileSync(file, String(process.pid))
-  }
-  process.on('exit', () => rmSync(file, { force: true }))
 }
 
 /** The run in `out`, as its manifest froze it; a report reads nothing else for its inputs. */
@@ -427,7 +411,7 @@ async function runAll() {
   const replies = corpusReplies().slice(0, count('limit', Infinity))
   if (replies.length === 0) fail(`no corpus in ${corpusFile}: run \`bun bench/ab.ts corpus\` first`)
   // The flags are all checked by now, so a refused start leaves no folder behind.
-  lock(out)
+  hold(out)
   openRun(out, manifestOf({
     command: 'run', repeats, writer, judge, effort: effort ?? 'default',
     arms: Object.fromEntries(arms.map(a => [a.name, sha256(a.guide)])),
@@ -507,7 +491,7 @@ async function runTasks() {
   if (unknown !== undefined) return fail(`no task named ${unknown}; available tasks: ${available.map(task => task.id).join(', ')}`)
   const tasks = available.filter(task => selected === undefined || selected.includes(task.id)).slice(0, count('limit', Infinity))
   // The flags are all checked by now, so a refused start leaves no folder behind.
-  lock(out)
+  hold(out)
   openRun(out, manifestOf({
     command: 'tasks', repeats, writer, judge, effort: effort ?? 'default',
     arms: Object.fromEntries(arms.map(a => [a.name, sha256(a.guide)])),
@@ -737,6 +721,17 @@ function tasksReport() {
   console.log(`\n${answered.length} of ${run.tasks.length} tasks answered in every arm and repeat`)
   ruleTable('Layout rules, tasks for choosing a guide', answered.filter(t => t.heldOut !== true))
   ruleTable('Layout rules, held-out tasks', answered.filter(t => t.heldOut === true))
+  // What became of the closing block on the tasks that ask for one. No rule: the plugin's guide asks
+  // only that the stretch keep its gist's words, which `gist-first` and `kept` both do.
+  const closingTable = (title: string, set: Task[]) => {
+    const asking = set.filter(t => t.closing !== undefined)
+    if (asking.length === 0) return
+    const found = arms.map(arm => asking.flatMap(t => repeats.map(rep => closingOf(textAt(at(arm, rep, t.id))))))
+    console.log(`\n${title}: answers by what became of the closing block, of those to the ${asking.length} tasks that ask for one\n\n| | ${arms.join(' | ')} |\n|${'---|'.repeat(arms.length + 1)}`)
+    for (const [closing, { label }] of Object.entries(CLOSING)) console.log(`| ${label} | ${found.map(forms => `${forms.filter(form => form === closing).length} / ${forms.length}`).join(' | ')} |`)
+  }
+  closingTable('Closing blocks, tasks for choosing a guide', answered.filter(t => t.heldOut !== true))
+  closingTable('Closing blocks, held-out tasks', answered.filter(t => t.heldOut === true))
   const brokenLines: string[] = [], overrideLines: string[] = []
   for (const [k, found] of ruleVerdicts) {
     const where = k.replaceAll('|', ', ')

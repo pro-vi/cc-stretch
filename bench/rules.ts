@@ -49,6 +49,8 @@ export const dropsWords = (stretch: Stretch) => drawnAs(stretch) === 'link' && g
 
 /** Whether drawn text holds a block between two rules, the shape a closing block takes. */
 const holdsRuledBlock = (drawn: string) => drawn.split('\n').filter(isRule).length >= 2
+/** Whether rules frame a stretch from outside: the text `before` it ends in one, and the lines of the `tail` after it hold one. */
+export const isFramed = (before: Segment | undefined, tail: string[]) => typeof before === 'string' && isRule(before.trimEnd().split('\n').at(-1) ?? '') && tail.some(isRule)
 
 export const RULES: readonly Rule[] = [
   {
@@ -135,9 +137,7 @@ export const RULES: readonly Rule[] = [
       if (drawnAs(last) !== 'link') return `the reply ends in ${quoted(last.short)}, which is not a link`
       if (holdsRuledBlock(draw(last.long ?? [], 'all'))) return undefined
       // The block's separators can frame the final stretch without becoming part of its content.
-      const before = parts[at - 1]
-      const framed = typeof before === 'string' && isRule(before.trimEnd().split('\n').at(-1) ?? '') && tail.some(isRule)
-      return framed ? undefined : `the last stretch, ${quoted(last.short)}, holds no block between two rules`
+      return isFramed(parts[at - 1], tail) ? undefined : `the last stretch, ${quoted(last.short)}, holds no block between two rules`
     },
   },
 ]

@@ -84,8 +84,8 @@ node bench/depth.ts ~/.claude/projects/*/*.jsonl
 bun bench/live.ts ~/.claude/projects/*/*.jsonl
 ```
 
-Rewrites and coverage use `claude -p` on your own account, and so does `live.ts` when given
-`--judge`. Raw text stays in `bench/out/`, which git ignores.
+Rewrites and coverage use `claude -p` on your own account, and so do `live.ts` when given `--judge`
+and `resend.ts run`. Raw text stays in `bench/out/`, which git ignores.
 
 ## Comparing guides
 
@@ -146,20 +146,79 @@ account answered. A lock lets only one run use a folder at a time.
 
 The report shows each rule's own count. Where someone overrode it, the adjudicated count appears
 next to it, and every override is listed with its reason. An override counts only for the answer
-text it was made on.
+text it was made on. For the tasks that ask for a closing block, it also counts what became of the
+block in each answer, held-out tasks apart. A stretch holds the block, and its long form begins
+with its short form's line (the block's gist), keeps the gist's words another way, or drops one; or
+the block is in view in no stretch; or the answer has no block.
 
 When you find something new about how Claude writes stretchtext, add it here so every later guide
 gets checked against it:
 
 1. Add tasks to `tasks.ts` that reproduce it. Put a few aside with `heldOut`, so a guide shaped on
-   the others is also seen on tasks it was not shaped on.
+   the others is also seen on tasks it was not shaped on. Where no task reproduces it, send a live
+   request that showed it again (Sending a live request again, below).
 2. Add a rule to `rules.ts`, or a fixture to an existing rule, with examples that must fail and
    examples that must pass in `tests/bench.test.ts`.
 3. Add the guide change that should fix it to `guides.ts` as a new variant, and run it against `g0`.
    A variant that passes goes on to a trial (Adopting a guide, below).
 
-`bun bench/stub/check.ts` runs the bench end to end with a stand-in for `claude`, and `live.ts` on
-transcripts it writes, without calling a model.
+`bun bench/stub/check.ts` runs the bench end to end with a stand-in for `claude`, and `live.ts` and
+`resend.ts` on transcripts it writes, without calling a model.
+
+## Sending a live request again
+
+Some failures show only in a working session, where a session falls into a form and keeps it. One
+is `closing-gist-kept` in `docs/BACKLOG.md`: in live replies the stretch that holds the closing
+block drops the words of its short form, and neither answers to the tasks nor rewrites of live
+replies do. The request that first showed it does.
+
+`resend.ts` takes such a request from its transcript, where Claude Code records it (read here from
+transcripts of 2.1.302 to 2.1.325), rebuilds it, holds it to the digest recorded beside it, and
+sends it again through `claude -p` on your own account with one thing changed: the guide in its
+system prompt. The model, the effort, the conversation, the tools and the rest of the system prompt
+are the session's own.
+
+```
+bun bench/resend.ts cases --out bench/out/<run> --where closing ~/.claude/projects/<project>/*.jsonl
+bun bench/resend.ts verify --out bench/out/<run>
+bun bench/resend.ts run --out bench/out/<run> --arm g0 --arm closing-gist-first --repeats 3
+bun bench/resend.ts report --out bench/out/<run>
+```
+
+`cases` freezes which requests are sent again. With `--where closing` it takes the one behind each
+session's first reply whose closing block sits in a stretch; with `--where dropped`, the first whose
+closing stretch drops a word of its short form; with `--where stretch`, the first with any link in
+view. `--per-session <n>` takes more, spread over the session. A case carries the name of the guide
+its session ran under, as `guides.ts` names it (`g0` for the plugin's own, which `live.ts` calls
+`shipped`); a session under a guide with no name is left out unless `--guide <name>=<file>` gives
+its text.
+
+`verify` sends one request for each model and effort unchanged to a receiver on your own machine,
+with made-up credentials, and compares what arrives with what was meant, field for field. `run`
+refuses a case until that has held for its model and effort under the Claude Code you have
+installed. It sends a case under one arm, then its repeats, before the next. It keeps each reply
+with the guide text and Claude Code version it was sent under, picks up where an earlier run
+stopped, and refuses a folder that holds a reply sent under another. One run uses a folder at a
+time. `report` counts, per guide, what became of the closing block and each rate `live.ts` counts
+without a judge.
+
+Read it with these in mind:
+
+- A request costs far more than a task answer. It carries its session's whole conversation (about
+  230 KiB to 1.1 MiB each at sixteen session starts sent under Claude Code 2.1.326), and under a
+  changed guide the first send finds none of that conversation cached. A settings file over 2 MiB
+  is refused (Claude Code 2.1.304), so replies deep in a long session cannot be sent.
+- A reply that asks for a tool ends the request there and is not read. Under a changed guide that
+  happened roughly twice as often as under the session's own (`docs/BACKLOG.md`,
+  `closing-gist-kept`), so a changed guide is read on fewer replies.
+- It measures one request with everything earlier in the session kept as it was, not what a guide
+  does over a session.
+- The case file names your transcripts and the replies hold your sessions' text. Keep the run under
+  `bench/out/`, which git ignores. A request itself is written only for the call, in a temporary
+  folder only you can read, and removed after.
+
+Use it after the tasks and before a trial: it can show that a change reaches a failure the tasks
+cannot produce.
 
 ## Adopting a guide
 

@@ -9,6 +9,8 @@ import { adjudicate, hiddenIn, verdictsOf } from '../bench/rules.ts'
 import type { RuleId } from '../bench/rules.ts'
 import { readChecks, readKey, readLabels, readPoints, resultOf } from '../bench/grading.ts'
 import { differences, readManifest, rowsOf } from '../bench/manifest.ts'
+import { canonical, recordingOf, requestBehind } from '../bench/requests.ts'
+import { closingOf } from '../bench/closing.ts'
 import type { Manifest } from '../bench/manifest.ts'
 import { readTask, TASKS } from '../bench/tasks.ts'
 import { ADDED, VARIANTS } from '../bench/guides.ts'
@@ -337,7 +339,7 @@ describe('run manifests and judge answers', () => {
 })
 
 describe('tasks and guide variants', () => {
-  test('every task is well formed: unique ids, items and series named by words, short tasks without items', async () => {
+  test('every task is well formed: unique ids, items and series named by words, short tasks without items, closing instructions that ask for two rules', async () => {
     expect(new Set(TASKS.map(t => t.id)).size).toBe(TASKS.length)
     for (const task of TASKS) {
       expect([task.id, task.needsNoStretch === true && (task.items?.length ?? 0) > 0]).toEqual([task.id, false])
@@ -346,7 +348,9 @@ describe('tasks and guide variants', () => {
       if (task.kind !== 'rewrite') for (const part of task.series ?? []) expect([task.id, part[0], part.some(word => `${task.question}\n${task.evidence}`.toLowerCase().includes(word.toLowerCase()))]).toEqual([task.id, part[0], true])
       expect([task.id, task.key.know.length > 0]).toEqual([task.id, true])
     }
-    expect(TASKS.filter(t => t.heldOut === true).map(t => t.id)).toEqual(['rollout-evidence', 'search-options-zh', 'auth-options', 'parser-status', 'review-fixes', 'cleanup-left', 'estimate-sources', 'incident-plan-zh'])
+    expect(TASKS.filter(t => t.heldOut === true).map(t => t.id)).toEqual(['rollout-evidence', 'search-options-zh', 'auth-options', 'parser-status', 'review-fixes', 'cleanup-left', 'estimate-sources', 'incident-plan-zh', 'framework-upgrade', 'outage-review'])
+    // A closing instruction asks for the two rules `closing-block-last` looks for.
+    for (const task of TASKS) if (task.closing !== undefined) expect([task.id, /horizontal rule/.test(task.closing)]).toEqual([task.id, true])
   })
 
   test('g0 is the plugin guide, and additive variants only add their declared lines', async () => {
@@ -370,6 +374,82 @@ describe('tasks and guide variants', () => {
       expect([name, rows[at]?.startsWith('- Make a required closing block')]).toEqual([name, true])
       expect([name, rows.with(at, baseRows[at] ?? '')]).toEqual([name, baseRows])
     }
+  })
+})
+
+describe('closing blocks', () => {
+  const BLOCK = '---\n\n**Goal** · ship the parser\n\n- [x] parser merged\n- [ ] renderer tested\n\n---'
+
+  test('a stretch that holds the block begins with its gist\'s line, keeps the gist\'s words another way, or drops one', async () => {
+    expect(closingOf(`Done. {{Status: parser merged; renderer next.|Status: parser merged; renderer next.\n\n${BLOCK}}}`)).toBe('gist-first')
+    expect(closingOf(`Done. {{Goal: ship the parser; renderer tested next.|${BLOCK.replace('**Goal** ·', 'Goal:').replace('- [ ] renderer tested', '- [ ] renderer tested next.')}}}`)).toBe('kept')
+    expect(closingOf(`Done. {{Status: parser merged; renderer next.|${BLOCK}}}`)).toBe('dropped')
+  })
+
+  test('the stretch is the last that holds the block, or the reply\'s last where the block\'s rules frame it; a block in view is in none', async () => {
+    // The first stretch drops no word; the block's, after it, does.
+    expect(closingOf(`{{The build fails.|The build fails on a stale cache.}}\n\n{{Status: merged.|${BLOCK}}}`)).toBe('dropped')
+    expect(closingOf('Done.\n\n---\n\n{{Goal: ship the parser.|**Goal:** ship the parser, with its tests.\n\n- [x] parser merged}}\n\n---')).toBe('kept')
+    expect(closingOf(`{{The build fails.|The build fails on a stale cache.}}\n\n${BLOCK}`)).toBe('bare')
+    expect(closingOf('{{The build fails.|The build fails on a stale cache.}}')).toBe('none')
+  })
+})
+
+describe('recorded requests', () => {
+  // A transcript as Claude Code 2.1.325 records two requests of one session: the second lists its messages as the first's and a tail.
+  const shape = { system: [{ type: 'text', text: 'You are Claude Code.' }], tools: [] }
+  const params = { model: 'claude-opus-5-5', max_tokens: 100 }
+  const first = { role: 'user', content: [{ type: 'text', text: 'What broke?' }] }
+  const answer = { role: 'assistant', content: [{ type: 'text', text: 'The cache.' }] }
+  const second = { role: 'user', content: [{ type: 'text', text: 'Since when?' }] }
+  // Any hash serves here: a recording is only ever held to the function it is read with. Claude Code's is SHA-256.
+  const digestOf = (text: string) => {
+    let hash = 0x811c9dc5
+    for (let i = 0; i < text.length; i++) hash = Math.imul(hash ^ text.charCodeAt(i), 0x01000193)
+    return (hash >>> 0).toString(16)
+  }
+  const hashOf = (value: unknown) => digestOf(canonical(value, true))
+  const read = (lines: string[], through?: number) => recordingOf(lines, digestOf, through)
+  const marked = { ...second, content: [{ ...second.content[0], cache_control: { type: 'ephemeral' } }] }
+  const rows = (blob: unknown = second) => [
+    { type: 'api-request-shape', shapeHash: hashOf(shape), shape },
+    { type: 'user', message: { role: 'user', content: 'What broke?' } },
+    { type: 'api-request', id: 'r1', shapeHash: hashOf(shape), params, keep: 0, tail: [hashOf(first)], cacheControl: [], requestDigest: digestOf(canonical({ ...params, ...shape, messages: [first] })) },
+    { type: 'assistant', requestRef: 'r1', version: '2.1.325', message: { id: 'm1', role: 'assistant', content: answer.content } },
+    // The second prompt is in no row of its own: the transcript holds it only as a request's message.
+    { type: 'api-request-blob', hash: hashOf(second), message: blob },
+    { type: 'api-request', id: 'r2', base: 'r1', keep: 1, shapeHash: hashOf(shape), params, tail: [hashOf(answer), hashOf(second)], cacheControl: [{ path: ['messages', 2, 'content', 0], value: { type: 'ephemeral' } }], requestDigest: digestOf(canonical({ ...params, ...shape, messages: [first, answer, marked] })) },
+    { type: 'assistant', requestRef: 'r2', version: '2.1.325', message: { id: 'm2', role: 'assistant', content: [{ type: 'text', text: 'Since Monday.' }] } },
+  ].map(row => JSON.stringify(row))
+
+  test('the text that is hashed sorts every object\'s keys, and leaves cache marks out only where asked', async () => {
+    const value = { b: 1, a: { z: [2, { y: null, x: 'q' }], cache_control: { type: 'ephemeral' } } }
+    expect(canonical(value, true)).toBe('{"a":{"z":[2,{"x":"q","y":null}]},"b":1}')
+    expect(canonical(value)).toBe('{"a":{"cache_control":{"type":"ephemeral"},"z":[2,{"x":"q","y":null}]},"b":1}')
+  })
+
+  test('a request is rebuilt from its shape, its messages and its cache marks, equal to its recorded digest', async () => {
+    const recording = read(rows())
+    expect([...recording.replies].map(([line, reply]) => [line, reply.text, reply.version])).toEqual([[4, 'The cache.', '2.1.325'], [7, 'Since Monday.', '2.1.325']])
+    expect(requestBehind(recording, 4).body.messages).toEqual([first])
+    const { body, digest } = requestBehind(recording, 7)
+    expect(body.messages).toEqual([first, answer, marked])
+    expect([body.model, body.system, digest]).toEqual(['claude-opus-5-5', shape.system, digestOf(canonical(body))])
+    // The recording's own message keeps no cache mark from the request rebuilt out of it.
+    expect(requestBehind(recording, 4).body.messages).toEqual([first])
+  })
+
+  test('what the transcript does not hold whole is refused, never sent', async () => {
+    expect(() => read(rows({ role: 'user', content: [{ type: 'text', text: 'Since then?' }] }))).toThrow('line 5 does not match its hash')
+    expect(() => requestBehind(read(rows()), 2)).toThrow('no reply at that line')
+    const noBlob = rows().filter((_, i) => i !== 4)
+    expect(() => requestBehind(read(noBlob), 6)).toThrow('a message is not recorded')
+    const otherDigest = rows().map((row, i) => (i === 2 ? row.replace(/"requestDigest":"[0-9a-f]+"/, '"requestDigest":"0"') : row))
+    expect(() => requestBehind(read(otherDigest), 4)).toThrow('does not match its digest')
+    // Lines after `through` are not read, and a last line cut short is the one a running session is writing.
+    expect([...read(rows(), 4).replies.keys()]).toEqual([4])
+    expect([...read([...rows(), '{"type":"assis']).replies.keys()]).toEqual([4, 7])
+    expect(() => read(['{"type":"assis', ...rows()])).toThrow('line 1 is not JSON')
   })
 })
 

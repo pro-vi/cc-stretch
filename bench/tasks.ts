@@ -14,8 +14,13 @@
 // reply of several parts, one of which is a plan or a series (steps, open checks, changes, sources):
 // in live replies (Opus 5.5 and Fable 5.2, Claude Code 2.1.322) such a series was often hidden whole
 // behind a sentence that only announces it. Their shapes are taken from live replies, their content
-// is invented. Held-out tasks are kept out of choosing a guide, so a report can show how the choice
-// does on unseen ones.
+// is invented. The last six tasks carry a standing instruction for a closing block of several rows;
+// `parser-status`, earlier, asks for a two-line block. In live replies (Opus 5.5 and Fable 5.2,
+// Claude Code 2.1.322 to 2.1.325) the stretch that holds such a block often dropped the words of
+// its short form. Answers written from scratch have not shown that (resend.ts sends the live
+// request again); these tasks show what a guide does to that stretch and to what the first reading
+// still carries. Held-out tasks are kept out of choosing a guide, so a report can show how the
+// choice does on unseen ones.
 
 export type Task = {
   id: string
@@ -86,6 +91,14 @@ const KEYBOARD_EVIDENCE =
   'Treat this supplied capability report as given. Client elements inside a reply accept keyboard events only after a mouse click gives focus; Escape returns focus. A toolbar above the prompt is reachable with Ctrl+X Tab and supports one-letter or digit buttons; Escape returns to typing. A custom keybinding can invoke an existing engine action only when the engine is not handling that action itself, making it fragile. Slash commands such as /stretch open 2 are keyboard-only but require typing a command for each operation.'
 const KEYBOARD_ITEMS = [['client', 'click', 'in-reply'], ['band', 'toolbar'], ['keybinding'], ['slash']]
 const KEYBOARD_POINTS = ['Client needs an initial mouse click.', 'Toolbar is reachable without a mouse.', 'Custom keybindings can conflict with engine actions.', 'Slash commands are keyboard-only but slow.']
+
+// Three standing instructions for a closing block, each a block of several rows between two rules.
+const STATUS_CHECKLIST =
+  'My standing instruction for every reply: end with a status block between two horizontal rules (`---`). It holds a **Goal** line that says what this work is for, then a checklist with a `- [x]` row for each thing finished and a `- [ ]` row for each thing still to do, then a **Needs you** line when I owe a decision. No row is longer than twelve words.'
+const STATUS_HANDOFF =
+  'My standing instruction for every reply: close with a handoff block between two horizontal rules (`---`), with one line each for **State**, **Changed**, **Verified**, **Not verified** and **Next**.'
+const STATUS_OPEN =
+  'My standing instruction for every reply: finish with a status block between two horizontal rules (`---`), headed **Open items**: a numbered list of what is still open, each with who owns it, then a **Blocked on** line.'
 
 export const TASKS: Task[] = [
   {
@@ -781,6 +794,138 @@ What is left costs about $4 a month.`,
       know: ['重试队列要落盘。', '超时改为 5 秒。', '新增回调积压的告警。', '补发 3 月 2 日丢失的 17 条回调，在队列落盘上线之后。'],
       defer: ['3 月 2 日的重启丢了 17 条回调。', '约 6% 的回调超时。'],
       never: ['丢失的回调已经补发。', '重试队列已经落盘。'],
+    },
+  },
+  {
+    id: 'queue-move',
+    closing: STATUS_CHECKLIST,
+    question: 'Where are we on moving the image service to the new queue, and what is left before the old one can be switched off?',
+    evidence: `Move of the image service from the old queue to the new one, notes as of today.
+- The consumer is ported and merged (#431). It has read from the new queue since Tuesday.
+- The producer writes every message to both queues since Tuesday 09:00. Over the 48 hours since, 1.2M messages went to each, and a comparison job found 0 that differ.
+- Dead-letter handling is not ported. On the old queue a failed message goes to a dead-letter queue after 5 tries; on the new one it is retried forever. The old dead-letter queue holds 37 messages that nobody has looked at.
+- No load test has been run against the new queue. Peak is 900 messages a second; the 48 hours peaked at 310.
+- Switching the old queue off needs a maintenance window from the platform team. They offer Thursday 02:00 or next Tuesday 02:00, and want an answer by Wednesday noon.`,
+    key: {
+      know: [
+        'The consumer and the dual writes are in place, and 48 hours of messages match on both queues.',
+        'Dead-letter handling is not ported: on the new queue a failed message is retried forever.',
+        'No load test has been run at peak on the new queue.',
+        'You must choose the maintenance window, Thursday 02:00 or next Tuesday 02:00, by Wednesday noon.',
+      ],
+      defer: ['The old dead-letter queue holds 37 messages nobody has looked at.', 'Peak is 900 messages a second, and the 48 hours peaked at 310.'],
+      never: ['The new queue has been tested at peak load.', 'The old queue can be switched off now.'],
+    },
+  },
+  {
+    id: 'flaky-checkout',
+    closing: STATUS_CHECKLIST,
+    question: 'What did you find on the flaky checkout tests, and what did you change?',
+    evidence: `Notes from today's work on the three checkout tests that fail now and then in CI.
+- "saves the cart" and "restores the cart" shared one fixture user, and each changed its cart. Changed: tests/fixtures/users.ts now makes a new user for each test.
+- "pays with a saved card" waited 2 s for the payment stub, which sleeps 1.5 s by design, and timed out when CI was busy. Changed: the wait is now 10 s. The stub's sleep is untouched.
+- "applies a coupon" still fails, about 1 run in 40 on my machine. Cause not found. Nothing changed for it.
+Loop of 200 local runs of the checkout suite: 14 runs failed before the changes, 5 after, and all 5 were "applies a coupon".
+The two changes are committed on the branch fix/checkout-flakes and not pushed. CI has not run them.`,
+    key: {
+      know: [
+        'Two causes are fixed: a fixture user shared by two tests, and a payment wait that was too short.',
+        '"applies a coupon" still fails about 1 run in 40, and its cause is not found.',
+        'The changes are committed locally, not pushed, and CI has not run them.',
+      ],
+      defer: ['Failures fell from 14 to 5 in 200 local runs.', "The longer wait leaves the payment stub's 1.5 s sleep as it is."],
+      never: ['The checkout tests are no longer flaky.', 'CI passes with the changes.'],
+    },
+  },
+  {
+    id: 'invoice-migration',
+    closing: STATUS_HANDOFF,
+    question: 'I wrote the migration for the invoices table. Is it safe to run on production tonight?',
+    evidence: `migrations/0412_invoices.sql, as written:
+  1. ALTER TABLE invoices ADD COLUMN currency text NOT NULL DEFAULT 'USD';
+  2. CREATE INDEX invoices_customer_issued ON invoices (customer_id, issued_at);
+  3. ALTER TABLE invoices DROP COLUMN legacy_total;
+There is no down migration.
+Production: Postgres 15, invoices holds 90M rows and takes writes all day.
+Staging run on a copy of production: step 1 took 40 ms, step 2 took 7 min 12 s, step 3 took 15 ms. Step 2 was built without CONCURRENTLY, so it blocked writes to the table for as long as it ran.
+$ grep -rn legacy_total src/
+src/reports/monthly.ts:88:    total: row.legacy_total ?? row.total,
+The monthly report job runs on the 1st at 03:00.`,
+    key: {
+      know: [
+        'No: it is not safe to run tonight as written.',
+        'The index build blocks writes to invoices for about 7 minutes; build it with CONCURRENTLY.',
+        'Dropping legacy_total breaks the monthly report, which still reads it.',
+      ],
+      defer: ['Adding the currency column is quick and safe.', 'There is no down migration.'],
+      never: ['The migration is safe to run tonight.', 'Nothing reads legacy_total any more.'],
+    },
+  },
+  {
+    id: 'dashboard-slow',
+    closing: STATUS_HANDOFF,
+    question: 'Why did the dashboard get slower after release 4.12, and is it fixed?',
+    evidence: `Dashboard load time, p95, from the browser metrics: 1.4 s on release 4.11, 3.9 s on 4.12. The API's own response times did not change.
+git bisect between the two releases ends on a41f9c2, "load each widget's data on its own": the page made 1 data request before it and makes 14 after it.
+Branch batch-widgets groups the 14 into 2 requests. 20 loads on my laptop against the staging API: p95 1.6 s.
+On that branch one test fails: "Dashboard renders the empty state" compares against a stored snapshot that still shows the old loading order. The snapshot has to be made again; the page itself draws correctly.
+The branch has no review and is not merged. Nothing was measured in production.`,
+    key: {
+      know: [
+        'The cause is commit a41f9c2, which made the page send 14 data requests where it sent 1.',
+        'A fix exists on the branch batch-widgets, but it is not reviewed, not merged and not in production.',
+        'The fix measured 1.6 s only on a laptop against staging, not in production.',
+      ],
+      defer: ['One snapshot test fails on the branch because its stored snapshot is out of date.', 'p95 went from 1.4 s to 3.9 s.'],
+      never: ['The fix is in production.', 'The dashboard is back to its old speed for users.'],
+    },
+  },
+  {
+    id: 'framework-upgrade',
+    heldOut: true,
+    closing: STATUS_OPEN,
+    question: 'Sum up the framework upgrade so far, and what is still open.',
+    evidence: `Upgrade of the web framework from 6 to 7, on the branch upgrade/v7.
+- 212 of 214 tests pass. The 2 that fail are both in the upload module: version 7 replaces the multipart parser's API.
+- Two ways to mend upload: move to the new streaming API (about 2 days), or pin the old parser through the compat package (about 1 hour; the compat package gets no fixes after March). Nobody has chosen.
+- Version 7 needs Node 20. The CI images run Node 18. Priya owns the CI images.
+- The middleware option "before" is renamed "pre". The code is updated; the developer docs are not. Sam owns the docs.
+- Measured on the branch: bundle 412 kB before, 389 kB after. Build 94 s before, 61 s after.
+- Nothing has been deployed to staging.`,
+    key: {
+      know: [
+        'The upgrade is on a branch with 212 of 214 tests passing; the 2 failures are in upload.',
+        'Someone must choose how to mend upload: the new streaming API, about 2 days, or the compat package, about 1 hour and without fixes after March.',
+        'CI still runs Node 18 and version 7 needs Node 20.',
+        'Nothing has been deployed to staging.',
+      ],
+      defer: ['The developer docs still name the middleware option "before".', 'The bundle and the build both got smaller: 412 to 389 kB, 94 to 61 s.'],
+      never: ['All tests pass on the upgrade branch.', 'The upgrade has run on staging.'],
+    },
+  },
+  {
+    id: 'outage-review',
+    heldOut: true,
+    closing: STATUS_CHECKLIST,
+    question: 'What came out of the outage review, and what have you already done about it?',
+    evidence: `Review of Monday's 47-minute outage of the orders API.
+Cause: the database connection pool (limit 40) was used up by a report query that held connections for minutes. The alert fired 31 minutes in, because it waits for 30 minutes of errors.
+Done since:
+- The alert now fires after 5 minutes of errors. Deployed.
+- The runbook has a section on pool exhaustion. Merged.
+Not done:
+- Raising the pool limit to 80 and giving report queries their own pool of 10: pull request #907 is open and needs the database team's approval.
+- A failover test: not scheduled.
+- A notice to customers is drafted. You decide whether it goes to all customers or only to the 31 whose orders failed.`,
+    key: {
+      know: [
+        'The outage came from a report query using up the connection pool, and the alert fired 31 minutes in.',
+        'Done: the alert now fires after 5 minutes, and the runbook covers pool exhaustion.',
+        "The pool change waits in pull request #907 for the database team's approval.",
+        'You must decide whether the customer notice goes to all customers or only the 31 affected.',
+      ],
+      defer: ['No failover test is scheduled.', 'The outage lasted 47 minutes.'],
+      never: ['The pool limit has been raised.', 'The customer notice has been sent.'],
     },
   },
 ]

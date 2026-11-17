@@ -1,6 +1,6 @@
 // Drives the guide bench through its run-folder cases with the stand-in `claude` in this folder, and
-// live.ts through transcripts written here, so they are checked without a model call. Exits 1 if a
-// case did not hold.
+// live.ts and resend.ts through transcripts written here, so they are checked without a model call.
+// Exits 1 if a case did not hold.
 //   bun bench/stub/check.ts
 import { spawnSync } from 'node:child_process'
 import { createHash } from 'node:crypto'
@@ -9,11 +9,14 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { GUIDE } from '../../hooks/guide.ts'
 import { readManifest } from '../manifest.ts'
+import { canonical } from '../requests.ts'
 
 const STUB = new URL('.', import.meta.url).pathname
 const AB = new URL('../ab.ts', import.meta.url).pathname
 const LIVE = new URL('../live.ts', import.meta.url).pathname
+const RESEND = new URL('../resend.ts', import.meta.url).pathname
 const scratch = mkdtempSync(join(tmpdir(), 'cc-stretch-bench-check-'))
+const sha256 = (text: string) => createHash('sha256').update(text).digest('hex')
 
 /** Runs the bench, or another of its scripts, with the stand-in first on PATH; returns its exit status and output. */
 function bench(args: string[], env: Record<string, string> = {}, script = AB) {
@@ -333,6 +336,102 @@ check('without --judge the saved verdicts are counted, and --judge without --lab
 const unasked = join(scratch, 'unasked.jsonl')
 r = live(['--sessions', '--labels', unasked, '--judge', 'haiku', ...labelFiles], { STUB_FAIL_MATCH: '.' })
 check('with --sessions the judge is not asked', r.status === 0 && !r.output.includes('asking') && !existsSync(unasked) && r.output.includes('| a link in view is a label, by the judge | 1 |'), r.output)
+
+// Requests sent again: transcripts written here as Claude Code 2.1.325 records its requests, each
+// one's messages listed by hash as the tail added to the request before, under the digest of the
+// whole. A prompt after the first is held only as a request's message, in a row of its own. The
+// stand-in's reply drops a word of its closing gist unless the guide asks for the gist's line first,
+// and it sends a request on to the receiver as Claude Code does.
+const DROPPED = 'The build {{passes.|passes on a clean cache.}}\n\n{{Status: built; ship next.|---\n\n**Next** · deploy\n\n---}}'
+function recorded(name: string, texts: string[]) {
+  const shape = { system: [{ type: 'text', text: 'You are Claude Code.' }, { type: 'text', text: `Be brief.\n\n${GUIDE}\n\nOther instructions.` }], tools: [] }
+  const shapeHash = sha256(canonical(shape, true))
+  const params = { model: 'claude-opus-5-5', max_tokens: 1000, betas: ['beta-a', 'beta-b'], output_config: { effort: 'high' } }
+  const rows: unknown[] = [{ type: 'api-request-shape', shapeHash, shape }]
+  const messages: { role: string; content: { type: string; text: string; cache_control?: unknown }[] }[] = []
+  texts.forEach((text, i) => {
+    const prompt = { role: 'user', content: [{ type: 'text', text: `What broke, part ${i}?` }] }
+    rows.push(i === 0 ? { type: 'user', origin: { kind: 'human' }, message: { role: 'user', content: prompt.content[0]?.text } } : { type: 'api-request-blob', hash: sha256(canonical(prompt, true)), message: prompt })
+    // The request lists every message before this prompt but the last reply as kept from the request before.
+    const keep = Math.max(0, messages.length - 1)
+    messages.push(prompt)
+    // The cache mark on the request's last message is recorded beside it, and is part of its digest alone.
+    const mark = { type: 'ephemeral' }
+    const sent = structuredClone(messages)
+    const last = sent.at(-1)?.content[0]
+    if (last !== undefined) last.cache_control = mark
+    rows.push({
+      type: 'api-request', id: `request-${i}`, shapeHash, params, ...(i > 0 && { base: `request-${i - 1}` }), keep,
+      tail: messages.slice(keep).map(message => sha256(canonical(message, true))),
+      cacheControl: [{ path: ['messages', messages.length - 1, 'content', 0], value: mark }], requestDigest: sha256(canonical({ ...params, ...shape, messages: sent })),
+    })
+    rows.push({ type: 'assistant', requestRef: `request-${i}`, version: '2.1.325', message: { id: `message-${i}`, role: 'assistant', content: [{ type: 'text', text }] } })
+    messages.push({ role: 'assistant', content: [{ type: 'text', text }] })
+  })
+  const file = join(resendDir, `${name}.jsonl`)
+  writeFileSync(file, `${rows.map(row => JSON.stringify(row)).join('\n')}\n`)
+  return file
+}
+const resendDir = join(scratch, 'resend')
+mkdirSync(resendDir)
+// The second session's only closing stretch is in its second reply, behind a prompt no row of its own holds.
+const sessions = [recorded('session-a', [DROPPED, DROPPED]), recorded('session-b', ['The build {{passes.|passes on a clean cache.}}', DROPPED]), recorded('session-c', ['The build {{passes.|passes on a clean cache.}}'])]
+const resendOut = join(scratch, 'resend-out')
+const resend = (args: string[], env: Record<string, string> = {}) => bench([args[0] ?? '', '--out', resendOut, ...args.slice(1)], env, RESEND)
+r = resend(['cases', '--where', 'closing', ...sessions])
+const frozenCases = existsSync(join(resendOut, 'cases.json')) ? readFileSync(join(resendOut, 'cases.json'), 'utf8') : ''
+check(
+  'the cases command freezes the first reply of each session whose closing block sits in a stretch, by its request\'s digest and with none of its text',
+  r.status === 0 && r.output.includes('session-a.jsonl: 2 replies could be sent again, 1 taken') && r.output.includes('session-b.jsonl: 1 replies could be sent again, 1 taken') && r.output.includes('session-c.jsonl: 0 replies could be sent again') && r.output.includes('froze 2 cases') &&
+    frozenCases.includes('"closing": "dropped"') && frozenCases.includes('"guide": "g0"') && !frozenCases.includes('built') && readFileSync(join(resendOut, 'guide-g0.txt'), 'utf8') === GUIDE,
+  `${r.output}\n${frozenCases}`,
+)
+const frozenBefore = snapshot(resendOut)
+r = resend(['cases', '--where', 'closing', ...sessions])
+const unverified = resend(['run', '--arm', 'g0'])
+check('a frozen set of cases is not frozen again, and the run command sends nothing before a request has been shown to arrive unchanged', r.status === 1 && r.output.includes('already frozen') && unverified.status === 1 && unverified.output.includes('run `verify` first') && snapshot(resendOut) === frozenBefore, `${r.output}\n${unverified.output}`)
+r = resend(['verify'], { STUB_ALTER: '1' })
+const altered = resend(['run', '--arm', 'g0'])
+check('the verify command fails on a request that arrives with a field changed, and the run command stays refused', r.status === 1 && r.output.includes('these fields differ: extra') && altered.status === 1, `${r.output}\n${altered.output}`)
+r = resend(['verify'])
+const otherVersion = resend(['run', '--arm', 'g0'], { STUB_VERSION: '9.9.10 (Claude Code)' })
+check(
+  'the verify command passes one request for each model and effort, for the Claude Code version it ran under only',
+  r.status === 0 && r.output.includes('case 0 (claude-opus-5-5, high effort) arrived as it was meant') && !r.output.includes('case 1') && otherVersion.status === 1 && otherVersion.output.includes('run `verify` first'),
+  `${r.output}\n${otherVersion.output}`,
+)
+r = resend(['run', '--arm', 'g0', '--arm', 'closing-gist-first', '--repeats', '2'])
+const toolRun = resend(['run', '--arm', 'series-named', '--repeats', '1', '--case', '0'], { STUB_TOOL_MATCH: 'name each part' })
+const again = resend(['run', '--arm', 'g0', '--arm', 'closing-gist-first', '--repeats', '2'])
+const resendReport = resend(['report'])
+check(
+  'the run command sends each case under each arm with the guide swapped, a resume sends nothing again, and the report counts what became of the closing block',
+  r.status === 0 && toolRun.status === 0 && toolRun.output.includes('case 0, series-named, repeat 1: asked for a tool') && again.status === 0 && !again.output.includes('case 0') &&
+    // Arms are printed in the order guides.ts names them.
+    resendReport.output.includes('2 cases, 9 requests sent under 9.9.9 (Claude Code)') &&
+    resendReport.output.includes('| | g0 | series-named | closing-gist-first |') &&
+    resendReport.output.includes('| asked for a tool | 0 | 1 | 0 |') &&
+    resendReport.output.includes("| closing stretch begins with its gist's line | 0 | 0 | 4 |") &&
+    resendReport.output.includes('| closing stretch drops a word of its gist | 4 | 0 | 0 |') &&
+    resendReport.output.includes('- case 0 (claude-opus-5-5, g0, D): g0 DD | series-named t | closing-gist-first GG') &&
+    resendReport.output.includes('- case 1 (claude-opus-5-5, g0, D): g0 DD | series-named - | closing-gist-first GG'),
+  `${r.output}\n${toolRun.output}\n${again.output}\n${resendReport.output}`,
+)
+const kept = readdirSync(join(resendOut, 'replies'))
+check('a run keeps its replies and no copy of a request', kept.length === 9 && kept.every(name => /^[01]-[a-z0-9-]+-\d\.json$/.test(name)) && !readdirSync(resendOut).some(name => name.includes('settings') || name.includes('lock')), `${kept.join('\n')}\n${readdirSync(resendOut).join('\n')}`)
+// A reply is tied to the guide text it was sent under: the same arm name with another text is not counted as sent.
+const otherText = resend(['run', '--arm', 'g0', '--guide', `g0=${trialFile}`])
+check('the run command refuses a folder whose replies were sent under another text of the same arm', otherText.status === 1 && otherText.output.includes('sent under another guide text or Claude Code version') && readdirSync(join(resendOut, 'replies')).length === 9, otherText.output)
+const noArm = resend(['run', '--arm', 'no-such-guide'])
+const noWhere = bench(['cases', '--out', join(scratch, 'resend-where'), '--where', 'anything', ...sessions], {}, RESEND)
+const strayFlag = resend(['report', '--arm', 'g0'])
+const noCommand = bench(['--out', resendOut], {}, RESEND)
+check(
+  'an arm that names no guide, a --where that names no kind of reply, a flag of another command and a missing command are refused',
+  noArm.status === 1 && noArm.output.includes('names no guide') && noWhere.status === 1 && noWhere.output.includes('--where is one of') && !existsSync(join(scratch, 'resend-where')) &&
+    strayFlag.status === 1 && strayFlag.output.includes('report takes no --arm') && noCommand.status === 1 && noCommand.output.includes('usage: bun bench/resend.ts'),
+  `${noArm.output}\n${noWhere.output}\n${strayFlag.output}\n${noCommand.output}`,
+)
 
 console.log(failed === 0 ? `all cases hold (scratch: ${scratch})` : `${failed} cases failed (scratch: ${scratch})`)
 process.exit(failed === 0 ? 0 : 1)

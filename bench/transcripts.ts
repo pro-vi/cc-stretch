@@ -61,15 +61,15 @@ type Row = {
 /** A transcript's turns, and each system prompt its requests carried, by the hash a turn names it by. */
 export type Session = { turns: Turn[]; systems: Map<string, string> }
 
-/** How an `api-request-blob` row starts, as of Claude Code 2.1.322: a request's body, most of a recent transcript's bytes, and nothing a turn is read from. */
+/** How an `api-request-blob` row starts, as of Claude Code 2.1.322: one message of a request, most of a recent transcript's bytes, and nothing a turn is read from. */
 const BLOB = Buffer.from('{"type":"api-request-blob"')
 
 /**
- * A file's lines, one at a time, without the rows that hold request bodies. The file is never held
- * whole: a long session's transcript runs past the longest string node can make (536 MB as of Node
- * 24.14.0).
+ * A file's lines, one at a time, without the rows that hold a request's messages unless `withBodies`.
+ * The file is never held whole: a long session's transcript runs past the longest string node can make
+ * (536 MB as of Node 24.14.0).
  */
-function* linesOf(path: string): Generator<string> {
+export function* linesOf(path: string, withBodies = false): Generator<string> {
   const fd = openSync(path, 'r')
   try {
     const chunk = Buffer.alloc(1 << 20)
@@ -77,7 +77,7 @@ function* linesOf(path: string): Generator<string> {
     const lineOf = (last: Buffer) => {
       const line = held.length === 0 ? last : Buffer.concat([...held, last])
       held = []
-      return line.length === 0 || line.subarray(0, BLOB.length).equals(BLOB) ? undefined : line.toString('utf8')
+      return line.length === 0 || (!withBodies && line.subarray(0, BLOB.length).equals(BLOB)) ? undefined : line.toString('utf8')
     }
     for (let size = readSync(fd, chunk, 0, chunk.length, null); size > 0; size = readSync(fd, chunk, 0, chunk.length, null)) {
       const read = chunk.subarray(0, size)

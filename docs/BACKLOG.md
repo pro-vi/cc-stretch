@@ -95,6 +95,8 @@ grades when the judge gets a control wrong.
   at a time, stop after `MAX_FAILURES` failed in a row, mend a last line a write cut short, and
   check a saved label verdict. `ab.ts` runs when loaded, so `live.ts` cannot import its copies,
   and a run's manifest hashes `bench/grading.ts`, so moving them there refuses runs already begun.
+- `bench/resend.ts` starts `claude -p` with its own flag list, reads `--guide <name>=<file>` as
+  `bench/live.ts` does, and has the `sha256` line `bench/ab.ts` has.
 
 `replay.ts`, `report.ts` and `coverage.ts` feed the README's numbers, so change them when those
 numbers are rerun, and the numbers change once.
@@ -394,8 +396,8 @@ run's hashed asking code, so the comment changes with the next change made there
 
 A label short form only names what its long form holds ("What the note says.", "Install
 details."). Live replies put them on links that hide several sections or a list, most of them in
-one session whose replies relay another session's work. Measured on 2026-10-20 by replaying requests recorded
-in live sessions (Opus 5.5 at xhigh effort, Claude Code 2.1.301 to 2.1.304, `LABELS` judged by Sonnet
+one session whose replies relay another session's work. Measured on 2026-10-20 by sending requests
+recorded in live sessions again (Opus 5.5 at xhigh effort, Claude Code 2.1.301 to 2.1.304, `LABELS` judged by Sonnet
 and again by Opus), no change moved them:
 
 - `sections-gist` and `sections-within`: links on sections judged labels 9 of 13 and 10 of 16,
@@ -409,15 +411,15 @@ and again by Opus), no change moved them:
 
 The 24 tasks rarely produce such a link (3 in 216 replies), and rewriting finished replies does not
 either (9 in 22 replies, with the longest replies refused by the safety filter), so a restart needs
-the replay harness, which is not in the repo. Before relying on it:
+recorded requests sent again (`bench/resend.ts`). Before relying on it:
 
 - Claude Code 2.1.304 refuses a `--settings` file over 2 MiB, and the rebuilt request travels in
-  one as `CLAUDE_CODE_EXTRA_BODY`, so a larger request cannot be replayed this way.
-- A request late in a turn is replayed with everything Claude did earlier in the turn kept as it
-  was, so a replay measures one edited request, not what shipping the change would do.
-- Every guide line tried roughly doubled tool requests in replays (10 to 18 and 21 of 36; 13 to 29
-  and 26 of 63); changes to the note did not (9 to 13 of 60). Replay a neutral line first, to see
-  whether any edit to the system prompt does it.
+  one as `CLAUDE_CODE_EXTRA_BODY`, so a larger request cannot be sent again this way.
+- A request late in a turn is sent again with everything Claude did earlier in the turn kept as it
+  was, so it measures one edited request, not what shipping the change would do.
+- Every guide line tried roughly doubled tool requests when sent again (10 to 18 and 21 of 36; 13
+  to 29 and 26 of 63); changes to the note did not (9 to 13 of 60). Send a neutral line first, to
+  see whether any edit to the system prompt does it.
 
 Measured on 2026-11-11 where none of the six aimed: links over one paragraph, whose short form is
 often the paragraph's opening line, a heading, a count or a sentence that announces what follows.
@@ -501,14 +503,14 @@ Fable 5.2.
 
 ## closing-gist-kept
 
-In 24 of 35 replies written under the shipped guide (replays of live requests, Opus 5.5, Claude
-Code 2.1.304), the reply's last stretch breaks keeps-short-words: its short form, such as "Status:
-Haiku run still going; /observe in a real session is next.", is not in the status block it opens.
+In 24 of 35 replies written under the shipped guide (live requests sent again, Opus 5.5, Claude
+Code 2.1.304), the reply's last stretch breaks keeps-short-words: its short form is not in the status block it
+opens.
 The guide asks for that short form to be "a one-line gist of the block" and for every long form to
 keep its short form's words. Not known: what the reader sees when such a stretch opens.
 
 Measured on 2026-11-16 (Opus 5.5 and Fable 5.2 at xhigh effort; live sessions on Claude Code
-2.1.322 to 2.1.325, tasks and replays on 2.1.326, counted with the newer matching):
+2.1.322 to 2.1.325, tasks and requests sent again on 2.1.326, counted with the newer matching):
 
 - The words go missing where the gist is a new sentence and the long form is the block alone. Two
   other forms keep them: the long form begins with the gist's own line, or the gist is built from
@@ -518,26 +520,26 @@ Measured on 2026-11-16 (Opus 5.5 and Fable 5.2 at xhigh effort; live sessions on
   word. Counted by session, the dropped gist is in 3 of 8 Opus sessions under the shipped guide
   and 3 of 6 under `series-named`; in 0 of 8 and 4 of 10 Fable sessions.
 - Answers written from scratch do not show it: 0 of 126 on seven tasks that ask for a closing
-  block, six of them with a block of several rows. Rewrites of live replies do not either. Replays
-  of recorded requests do: at six session starts that dropped a word live, 8 of 9 closing
+  block, six of them with a block of several rows. Rewrites of live replies do not either. Recorded
+  requests sent again do: at six session starts that dropped a word live, 8 of 9 closing
   stretches did under the guide the session ran on.
 - `closing-gist-first` rewords the bullet: "Make a required closing block the last stretch: short
   form, a one-line gist; long form, that exact line followed by the unchanged block." On the seven
   tasks the closing stretch then began with the gist's line in 21 of 21 answers under each of three
-  guides and both models, against 1 of 21 (Opus) and 0 of 21 (Fable) without it. In replays of 16
-  session starts, 18 of 20 closing stretches began with it and 2 dropped a word, against 7 and 12
+  guides and both models, against 1 of 21 (Opus) and 0 of 21 (Fable) without it. At 16 session
+  starts sent again, 18 of 20 closing stretches began with it and 2 dropped a word, against 7 and 12
   of 28 without it.
 - One cost, on `g0` under Fable: the gist became a count ("two fixes done, three items open"),
   and a task's first reading lost two of its points in most repeats. Under `series-named`'s series
   bullet, which refuses a count for a short form, it did not.
-- The guide did not decide it in replays: a start that dropped a word live did so under either
+- The guide did not decide it in requests sent again: a start that dropped a word live did so under either
   guide (6 of 15 closing stretches under `g0`, 6 of 13 under `series-named`).
-- A replay under a changed guide asked for a tool in 49 of 94, against 9 of 32 under the session's
+- A request sent again under a changed guide asked for a tool in 49 of 94, against 9 of 32 under the session's
   own, so the counts under a changed guide rest on fewer replies.
 
 Not known: what the reworded bullet does in live sessions, which takes a trial; whether it changes
 a form already in a session's earlier replies; Fable starts that drop a word, none of which could
-be replayed. The six tasks and the replay script are not in the repo.
+be sent again (`bench/resend.ts`).
 
 ## desktop-first-request
 

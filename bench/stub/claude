@@ -1,12 +1,21 @@
 #!/usr/bin/env bun
-// A stand-in for `claude -p --output-format json`, so the guide bench runs end to end without a
-// model. Put this folder first on PATH. It answers a writer with a fixed reply that stretches each
-// item of a three-item list, and a judge with the JSON each prompt asks for, as Claude Code 2.1.301
-// prints it: a list of events whose result event holds the answer and names the model.
+// A stand-in for `claude -p --output-format json` and, with `--settings`, `stream-json`, so the guide
+// bench runs end to end without a model. Put this folder first on PATH. It answers a writer with a
+// fixed reply that stretches each item of a three-item list, and a judge with the JSON each prompt
+// asks for, as Claude Code 2.1.301 prints it: a list of events whose result event holds the answer
+// and names the model.
 //   STUB_JUDGE=key|labels    the judge answers "maybe" for each key verdict, or each label
 //   STUB_FAIL_MATCH=<regex>  a prompt matching <regex> fails, as a refused request does
 //   STUB_RESOLVE=<suffix>    the model each call resolves to gets <suffix>, as after a model update
 //   STUB_VERSION=<text>      what `claude --version` prints
+// With `--settings <file>` it stands in for the way resend.ts sends a recorded request, as Claude
+// Code 2.1.326 does it: the file's CLAUDE_CODE_EXTRA_BODY is the whole request, which goes to
+// ANTHROPIC_BASE_URL when one is set, its beta names in a header, and events are printed one a line.
+// Its reply's closing stretch begins with its gist only under a guide that asks for that.
+//   STUB_TOOL_MATCH=<regex>  a request whose system prompt matches <regex> is answered with a tool call
+//   STUB_ALTER=1             the request goes on with a field added, as from a Claude Code that changed it
+import { readFileSync } from 'node:fs'
+
 const args = process.argv.slice(2)
 if (args.includes('--version')) {
   console.log(process.env.STUB_VERSION ?? '9.9.9 (Claude Code)')
@@ -14,6 +23,26 @@ if (args.includes('--version')) {
 }
 const prompt = args.at(-1) ?? ''
 const model = `stub-${args[args.indexOf('--model') + 1] ?? 'model'}${process.env.STUB_RESOLVE ?? ''}`
+if (args.includes('--settings')) {
+  const { betas = [], ...body } = JSON.parse(JSON.parse(readFileSync(args[args.indexOf('--settings') + 1], 'utf8')).env.CLAUDE_CODE_EXTRA_BODY)
+  const system = body.system.map(block => block.text ?? '').join('\n')
+  const events = [{ type: 'system', model }]
+  const answered = text => [{ type: 'assistant', message: { model, content: [{ type: 'text', text }] } }, { type: 'result', is_error: false, result: text }]
+  let exit = 0
+  if (process.env.ANTHROPIC_BASE_URL !== undefined) {
+    const sent = { ...body, stream: true, metadata: { user_id: 'stub' }, ...(process.env.STUB_ALTER === '1' && { extra: true }) }
+    const response = await fetch(`${process.env.ANTHROPIC_BASE_URL}/v1/messages`, { method: 'POST', headers: { 'content-type': 'application/json', 'anthropic-beta': betas.join(',') }, body: JSON.stringify(sent) })
+    events.push(...answered([...(await response.text()).matchAll(/^data: (.*)$/gm)].map(m => JSON.parse(m[1])).filter(event => event.type === 'content_block_delta').map(event => event.delta.text).join('')))
+  } else if (process.env.STUB_TOOL_MATCH !== undefined && new RegExp(process.env.STUB_TOOL_MATCH).test(system)) {
+    events.push({ type: 'assistant', message: { model, content: [{ type: 'tool_use', name: 'Bash' }] } }, { type: 'result', is_error: true, subtype: 'error_max_turns' })
+    exit = 1
+  } else {
+    const closing = system.includes('that exact line followed by the unchanged block') ? '{{Status: built; ship next.|Status: built; ship next.\n\n---\n\n**Next** · ship\n\n---}}' : '{{Status: built; ship next.|---\n\n**Next** · deploy\n\n---}}'
+    events.push(...answered(`The build {{passes.|passes on a clean cache.}}\n\n${closing}`))
+  }
+  console.log(events.map(event => JSON.stringify(event)).join('\n'))
+  process.exit(exit)
+}
 const count = tag => (new RegExp(`<${tag}>\\n([\\s\\S]*?)\\n</${tag}>`).exec(prompt)?.[1] ?? '').split('\n').filter(line => /^\d+\. /.test(line)).length
 const verdicts = (n, word, garbled) => Array.from({ length: n }, () => (process.env.STUB_JUDGE === garbled ? 'maybe' : word))
 
