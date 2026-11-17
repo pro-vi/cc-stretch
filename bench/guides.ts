@@ -41,11 +41,14 @@ function withReplaced(base: string, anchor: string, line: string): string {
 
 const LIST = '- Stretch list items, not whole lists.'
 const COPY = '- To write a long form, copy its short form and add words to the copy; do not write the detail as a new sentence. If the detail needs different words, change the short form until the long form holds every word of it.'
-const SERIES = '- A short form says what its long form says, in fewer words, however many that takes. When the long form is a plan or a series, its short form is that series with each part cut to a few words, never a sentence that only announces it. Example: "{{Next: key the cache on the lockfile; drop the retry; ship on Friday.|Next: key the CI cache on the lockfile as well as `package.json`; drop the retry, which only hides the stale read; and ship on Friday, once CI has passed twice.}}"'
+const SERIES_EXAMPLE = 'Example: "{{Next: key the cache on the lockfile; drop the retry; ship on Friday.|Next: key the CI cache on the lockfile as well as `package.json`; drop the retry, which only hides the stale read; and ship on Friday, once CI has passed twice.}}"'
+const SERIES = `- A short form says what its long form says, in fewer words, however many that takes. When the long form is a plan or a series, its short form is that series with each part cut to a few words, never a sentence that only announces it. ${SERIES_EXAMPLE}`
 
-/** Each variant as the lines it adds and the bullet each goes after, in reading order. */
 const AFTER_COPY = '- To write a long form, copy its short form'
-const SERIES_NAMED = '- A short form says what its long form says, in fewer words, however many that takes. When the long form is a plan or a series, its short form is that series with each part named in a few words. A count of the parts ("three fixes"), a word for what remains ("the rest", "a few follow-ups") and a sentence that only announces them are not short forms: name each part. Example: "{{Next: key the cache on the lockfile; drop the retry; ship on Friday.|Next: key the CI cache on the lockfile as well as `package.json`; drop the retry, which only hides the stale read; and ship on Friday, once CI has passed twice.}}"'
+const SERIES_NAMED = `- A short form says what its long form says, in fewer words, however many that takes. When the long form is a plan or a series, its short form is that series with each part named in a few words. A count of the parts ("three fixes"), a word for what remains ("the rest", "a few follow-ups") and a sentence that only announces them are not short forms: name each part. ${SERIES_EXAMPLE}`
+const SERIES_SHORT = `- A short form states the substance of its long form. For a plan or series, briefly name every part; a count, "the rest," or an announcement is not enough. ${SERIES_EXAMPLE}`
+const COPY_SHORT = '- Write the long form by copying the short form, then adding words without deleting, replacing or reordering any. If necessary, revise the short form first.'
+/** Each variant as the lines it adds and the bullet each goes after, in reading order. */
 const RECIPES: Readonly<Record<string, readonly (readonly [anchor: string, line: string])[]>> = {
   g0: [],
   /** Grow inside the sentence. */
@@ -88,6 +91,8 @@ const RECIPES: Readonly<Record<string, readonly (readonly [anchor: string, line:
   'series-named': [[LIST, SERIES_NAMED], [AFTER_KEEPS, COPY]],
   /** series-named, with a line against dropping a detail: under series-copy the opened answers left out more of a task's lesser points. */
   'series-kept': [[LIST, SERIES_NAMED], [AFTER_KEEPS, COPY], [AFTER_COPY, '- Leave no detail out to keep a long form close to its short form: a detail with no short form of its own goes into the long form nearest to it.']],
+  /** series-named with its two lines in fewer words, and the same example. */
+  'series-short': [[LIST, SERIES_SHORT], [AFTER_KEEPS, COPY_SHORT]],
   /** A sentence that only introduces what follows stays in view as plain text, and what it introduces is stretched. */
   'lead-in-outside': [[LIST, '- A sentence that only introduces what follows it, such as "Here is the plan:", "Two things changed." or "I would shape it like this.", is never a short form. Leave it as plain text outside the stretch, and stretch what it introduces, each part under a short form that states it.']],
   /** A stretch that hides several sections or a list gets a one-line gist for its short form, as the closing block does. */
@@ -103,6 +108,18 @@ const RECIPES: Readonly<Record<string, readonly (readonly [anchor: string, line:
 const additions = Object.fromEntries(
   Object.entries(RECIPES).map(([name, recipe]) => [name, recipe.reduce((guide, [anchor, line]) => withLine(guide, anchor, line), GUIDE)]),
 )
+/**
+ * The closing-block bullet, saying how its long form is written: the gist's own line, then the
+ * block. In live replies (Opus 5.5 and Fable 5.2, Claude Code 2.1.322 to 2.1.325) the gist was often
+ * a new sentence that no line of the block held, so the long form dropped the short form's words.
+ */
+const CLOSING_GIST_FIRST = '- Make a required closing block the last stretch: short form, a one-line gist; long form, that exact line followed by the unchanged block.'
+/** The variant `name` with its closing-block bullet replaced by CLOSING_GIST_FIRST. */
+function withClosingGistFirst(name: string): string {
+  const text = additions[name]
+  if (text === undefined) throw new Error(`no variant named ${name}`)
+  return withReplaced(text, AFTER_CLOSING, CLOSING_GIST_FIRST)
+}
 const listGuide = withLine(GUIDE, AFTER_SHORTEST, LIST)
 const withoutLengthRule = withReplaced(listGuide, AFTER_SHORTEST, '- Anything the reader must decide or do stays outside every stretch.')
 
@@ -134,6 +151,9 @@ const GROWTH = withReplaced(SHORTENED, SHORT_LONG, SHORT_LONG_GROWTH)
 
 export const VARIANTS: Readonly<Record<string, string>> = {
   ...additions,
+  'closing-gist-first': withClosingGistFirst('g0'),
+  'series-named-closing': withClosingGistFirst('series-named'),
+  'series-short-closing': withClosingGistFirst('series-short'),
   shortened: SHORTENED,
   'shortened-growth': GROWTH,
   'shortened-growth-words': withReplaced(GROWTH, SHORT_INLINE, SHORT_INLINE_WORDS),

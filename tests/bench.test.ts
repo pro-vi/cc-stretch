@@ -361,6 +361,16 @@ describe('tasks and guide variants', () => {
       expect([name, added.reduce((rest, line) => rest.replace(`\n${line}\n`, '\n'), `\n${text}\n`)]).toEqual([name, `\n${GUIDE}\n`])
     }
   })
+
+  test('variants that replace the closing-block bullet differ from their base in that row alone', async () => {
+    for (const [name, base] of [['closing-gist-first', 'g0'], ['series-named-closing', 'series-named'], ['series-short-closing', 'series-short']] as const) {
+      const rows = (VARIANTS[name] ?? '').split('\n')
+      const baseRows = (VARIANTS[base] ?? '').split('\n')
+      const at = baseRows.findIndex(row => row.startsWith('- If other instructions require a closing block'))
+      expect([name, rows[at]?.startsWith('- Make a required closing block')]).toEqual([name, true])
+      expect([name, rows.with(at, baseRows[at] ?? '')]).toEqual([name, baseRows])
+    }
+  })
 })
 
 describe('overrides', () => {
