@@ -35,7 +35,7 @@ Checkbox marks a ticket consumed (plan written, or direct commit landed).
 - [ ] **post-pass-stretcher** — a hook turns Claude's finished plain reply into stretchtext · verdict: pending · needs: a live check that a `turn.step` rewrite is shown and recorded
 - [ ] **opened-from-doc** — `openedFrom`'s comment in `bench/measure.ts` describes the note as 0.5.2 writes it · verdict: defer · promote when: the next change to `bench/measure.ts`
 - [ ] **label-short-forms** — a short form over several sections states their gist, not their topic · verdict: defer · signal: none · promote when: a change with a mechanism none of the six tried shares
-- [ ] **closing-gist-kept** — the closing stretch's short form is in the block it opens · verdict: pending · needs: what the reader sees when such a stretch opens
+- [ ] **closing-gist-kept** — the closing stretch's short form is in the block it opens · verdict: pending · needs: what the reader sees when such a stretch opens, and a live trial of a guide with the reworded closing bullet
 - [ ] **desktop-first-request** — the guide reaches the desktop app's first request · verdict: pending · needs: whether the desktop app's `ui_attach` arrives before its first request
 - [ ] **long-session-drift** — Claude keeps writing stretches deep in a long session · verdict: defer · signal: `node bench/depth.ts` on a reader's transcripts · promote when: its counts show long replies that were sent the guide going plain
 - [ ] **copy-on-select** — the plugin's selection copies when Claude Code's own would · verdict: pending · needs: a design call on whether a drag or double-click in a paragraph the plugin draws follows "Copy on select"
@@ -490,14 +490,54 @@ One guide differed between two runs of the same tasks by about as much as two gu
 one, and the breaches sat in a few tasks, so twenty-four answers a guide settle only a large
 difference.
 
+`series-short` says the two bullets `series-named` adds in 54 words where it takes 114, with the
+same example. Measured on 2026-11-16 (Opus 5.5 at xhigh effort, Claude Code 2.1.326, three answers
+a task): on the twelve series tasks `g0` broke `series-in-view` in 14 of 36 answers,
+`series-named` in 2 and `series-short` in 6; the same two guides with the closing bullet of
+`closing-gist-kept` reworded, in 4 and 3. Over 41 tasks a link was judged a label in 13 of 123
+answers under `g0`, 5 under `series-named` and 3 under `series-short`. Its closed answers were
+longer: 72 words an answer, against 62 under `series-named` and 60 under `g0`. Not run under
+Fable 5.2.
+
 ## closing-gist-kept
 
 In 24 of 35 replies written under the shipped guide (replays of live requests, Opus 5.5, Claude
 Code 2.1.304), the reply's last stretch breaks keeps-short-words: its short form, such as "Status:
 Haiku run still going; /observe in a real session is next.", is not in the status block it opens.
 The guide asks for that short form to be "a one-line gist of the block" and for every long form to
-keep its short form's words. Not known: why the words go missing, and what the reader sees when
-such a stretch opens.
+keep its short form's words. Not known: what the reader sees when such a stretch opens.
+
+Measured on 2026-11-16 (Opus 5.5 and Fable 5.2 at xhigh effort; live sessions on Claude Code
+2.1.322 to 2.1.325, tasks and replays on 2.1.326, counted with the newer matching):
+
+- The words go missing where the gist is a new sentence and the long form is the block alone. Two
+  other forms keep them: the long form begins with the gist's own line, or the gist is built from
+  the block's rows.
+- The form is a session's habit. Of 32 live sessions with a closing block in a stretch, 29 kept one
+  form from first reply to last, and the 10 that began with the gist's own line never dropped a
+  word. Counted by session, the dropped gist is in 3 of 8 Opus sessions under the shipped guide
+  and 3 of 6 under `series-named`; in 0 of 8 and 4 of 10 Fable sessions.
+- Answers written from scratch do not show it: 0 of 126 on seven tasks that ask for a closing
+  block, six of them with a block of several rows. Rewrites of live replies do not either. Replays
+  of recorded requests do: at six session starts that dropped a word live, 8 of 9 closing
+  stretches did under the guide the session ran on.
+- `closing-gist-first` rewords the bullet: "Make a required closing block the last stretch: short
+  form, a one-line gist; long form, that exact line followed by the unchanged block." On the seven
+  tasks the closing stretch then began with the gist's line in 21 of 21 answers under each of three
+  guides and both models, against 1 of 21 (Opus) and 0 of 21 (Fable) without it. In replays of 16
+  session starts, 18 of 20 closing stretches began with it and 2 dropped a word, against 7 and 12
+  of 28 without it.
+- One cost, on `g0` under Fable: the gist became a count ("two fixes done, three items open"),
+  and a task's first reading lost two of its points in most repeats. Under `series-named`'s series
+  bullet, which refuses a count for a short form, it did not.
+- The guide did not decide it in replays: a start that dropped a word live did so under either
+  guide (6 of 15 closing stretches under `g0`, 6 of 13 under `series-named`).
+- A replay under a changed guide asked for a tool in 49 of 94, against 9 of 32 under the session's
+  own, so the counts under a changed guide rest on fewer replies.
+
+Not known: what the reworded bullet does in live sessions, which takes a trial; whether it changes
+a form already in a session's earlier replies; Fable starts that drop a word, none of which could
+be replayed. The six tasks and the replay script are not in the repo.
 
 ## desktop-first-request
 
