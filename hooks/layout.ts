@@ -576,8 +576,9 @@ function italicsAt(text: string, at: number): { canOpen: boolean; canClose: bool
 /**
  * A line's inline markdown as runs: bold, italic, code spans, links, pressable phrases, each character
  * in its tint. Italics run from a `*` or `_` to the nearest closing mark of its kind. An opening mark
- * that meets no closing mark on the line is text, unless it is arriving. Bold toggles at every `**`,
- * closed or not.
+ * that meets no closing mark on the line is text, unless it is arriving; so is a closing mark that met
+ * no opening one, unless it is arriving, as its opening one may be in a word not shown at this frame.
+ * Bold toggles at every `**`, closed or not.
  */
 function inline({ text, tints, arriving }: Line, isBold: boolean): Run[] {
   const runs: Run[] = []
@@ -656,13 +657,19 @@ function inline({ text, tints, arriving }: Line, isBold: boolean): Run[] {
     if (ch === '*' || ch === '_') {
       const { canOpen, canClose } = italicsAt(text, i)
       const nearest = openMarks.findLastIndex(mark => mark.text === ch)
-      const isClosing = nearest !== -1 && canClose
+      const opening = openMarks[nearest]
+      // An arriving mark closes only an arriving one: text already drawn stays as it is.
+      const isClosing = opening !== undefined && canClose && (!arriving[i] || arrivingMarks.has(opening))
+      if (!isClosing && !canOpen && canClose && arriving[i]) {
+        i += 1
+        continue
+      }
       if (isClosing || canOpen) {
         // A mark that can close the nearest open mark of its kind does. Any other mark that can open
         // takes that one's place. Either way that mark is open no longer, nor is any opened after it:
         // unless this one closed it, it met no closing mark and stays text.
-        const [opening] = nearest === -1 ? [] : openMarks.splice(nearest)
-        if (isClosing && opening !== undefined) italicise(opening)
+        if (nearest !== -1) openMarks.splice(nearest)
+        if (isClosing) italicise(opening)
         else {
           const mark = runOf(ch, i)
           runs.push(mark)

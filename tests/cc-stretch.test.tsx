@@ -8,6 +8,7 @@ import { GUIDE, takesTrialGuide } from '../hooks/guide'
 import { DEFAULT_LOOK, lookOf, marksSetting } from '../hooks/look'
 import { asArriving, hrefAt, layout, leadInOf, link, linkAt, namesOf, tint, widthOf, withLeadIns } from '../hooks/layout'
 import { closeAfter, hideLongForms, newStreamState, paragraphsOf, parse, stretches } from '../hooks/parse'
+import type { Stretch } from '../hooks/parse'
 import Reply from '../hooks/reply'
 
 const REPLY = [
@@ -110,15 +111,17 @@ const toasts = (on: On) => {
 
 describe('grow', () => {
   const NELSON = 'Stretchtext, a kind of hypertext, is basically a form of writing closely related to other prose.'
-  const plain = (text: string, progress: number, short = 'Stretchtext is a form of writing.') =>
-    grow(short, parse(text), progress, () => '')
+  // A frame part of the way through is marked as arriving (asArriving); its text is read without the marks.
+  const unmarked = (frame: string) => frame.replace(/[\ufdd5\ufdd6]/g, '')
+  const at = (short: string, long: string, progress: number) => unmarked(grow(short, parse(long), progress, () => ''))
+  const plain = (text: string, progress: number, short = 'Stretchtext is a form of writing.') => at(short, text, progress)
 
-  test('starts from the short form and ends at the long form', async () => {
-    expect(plain(NELSON, 0)).toBe('Stretchtext, is a form of writing')
+  test('starts as the short form is written and ends as the long form is', async () => {
+    expect(plain(NELSON, 0)).toBe('Stretchtext is a form of writing.')
     expect(plain(NELSON, 1)).toBe(NELSON)
   })
 
-  test('opens every seam at once, keeping the anchors in order', async () => {
+  test('opens every seam at once, keeping the shared words in order', async () => {
     const half = plain(NELSON, 0.5)
     expect(half).toMatch(/^Stretchtext, a .*is .*a form of writing closely/)
     expect(half.split(/\s+/).every(word => NELSON.includes(word))).toBe(true)
@@ -126,53 +129,87 @@ describe('grow', () => {
     expect(half.length).toBeLessThan(NELSON.length)
   })
 
-  test('grows to the left of an anchor and to the right of the last', async () => {
-    expect(grow('cache', parse('the stale cache'), 0.5, () => '')).toBe('stale cache')
-    expect(grow('cache', parse('cache of old modules'), 0.5, () => '')).toBe('cache of ')
+  test('grows to the left of a shared word and to the right of the last, and no space waits for a word', async () => {
+    expect(at('cache', 'the stale cache', 0.5)).toBe('stale cache')
+    expect(at('cache', 'cache of old modules', 0.5)).toBe('cache of')
+    expect(plain(NELSON, 0.1)).toBe('Stretchtext, is a form of writing closely.')
   })
 
-  test('a nested stretch holding the short words anchors them, and a later repeat does not', async () => {
+  test('a word written another way stays as the short form wrote it until a word arrives beside it', async () => {
+    expect(at('Tests pass.', 'All tests pass.', 0.3)).toBe('Tests pass.')
+    expect(at('Tests pass.', 'All tests pass.', 0.5)).toBe('tests pass.')
+  })
+
+  test('a short form the long form keeps nothing of stands until the first word arrives, then the long form arrives in reading order', async () => {
+    expect(at('x', 'one two three four', 0)).toBe('x')
+    expect(at('x', 'one two three four', 0.5)).toBe('one two')
+  })
+
+  test('a nested stretch stands in for the short form\'s words it reads as once it arrives', async () => {
     const long = parse('wraps values, plus {{a way to chain|two operations, a way to chain}} functions. You have to try it.')
-    const shown = grow('wraps values, plus a way to chain functions.', long, 0, nested => `[${nested.short}]`)
-    expect(shown).toBe('wraps values, plus [a way to chain] functions.')
+    expect(grow('wraps values, plus a way to chain functions.', long, 0, nested => `[${nested.short}]`)).toBe('wraps values, plus a way to chain functions.')
+    expect(grow('wraps values, plus a way to chain functions.', long, 1, nested => `[${nested.short}]`)).toBe('wraps values, plus [a way to chain] functions. You have to try it.')
   })
 
-  test('punctuation standing after an anchor stays with it', async () => {
+  test('punctuation the long form sets apart is its own, and the short form\'s stays until then', async () => {
     const long = parse('In short, it returns {{a value|a value, wrapped}} .')
-    expect(grow('it returns a value.', long, 0, nested => `[${nested.short}]`)).toBe('it returns [a value] .')
+    expect(grow('it returns a value.', long, 0, nested => `[${nested.short}]`)).toBe('it returns a value.')
+    expect(grow('it returns a value.', long, 1, nested => `[${nested.short}]`)).toBe('In short, it returns [a value] .')
   })
 
-  test('a long form without the short words arrives in reading order', async () => {
-    expect(grow('x', parse('one two three four'), 0.5, () => '')).toBe('one two ')
-  })
-
-  test('a markdown link whose label holds short words anchors them, target and all', async () => {
+  test('a markdown link the long form adds in place of words arrives whole, the words standing until it does', async () => {
     const long = parse('The [forum thread](https://x.invalid/t) reports it, twice.')
-    expect(grow('The forum thread reports it.', long, 0, () => '')).toBe('The [forum thread](https://x.invalid/t) reports it,')
-    // One word of the label is enough: the link is never shown in part.
-    expect(grow('The thread reports it.', long, 0, () => '')).toBe('The [forum thread](https://x.invalid/t) reports it,')
-    expect(grow('论坛帖子', parse('[论坛帖子](https://x.invalid/t),还有更多'), 0, () => '')).toMatch(/^\[论坛帖子\]\(https:\/\/x\.invalid\/t\)/)
+    const frames = Array.from({ length: 21 }, (_, step) => unmarked(grow('The forum thread reports it.', long, step / 20, () => '')))
+    expect(frames[0]).toBe('The forum thread reports it.')
+    expect(frames.at(-1)).toBe('The [forum thread](https://x.invalid/t) reports it, twice.')
+    expect(frames.every(frame => frame.includes('forum thread](https://x.invalid/t)') !== frame.includes('The forum thread'))).toBe(true)
+    // A link both forms hold stands throughout.
+    expect(at('See [the docs](https://x.invalid/d).', 'See [the docs](https://x.invalid/d) for more.', 0.3)).toMatch(/^See \[the docs\]\(https:\/\/x\.invalid\/d\)/)
   })
 
   test('a link the long form adds arrives whole, and no frame draws its markup', async () => {
     const long = 'Read [the docs page](https://x.invalid/a) now, then go on.'
     for (let step = 0; step <= 20; step += 1) {
       const frame = grow('Read now.', parse(long), step / 20, () => '', word => tint('#d3bdff', word))
-      expect((layout(asArriving(frame), 200)[0] ?? []).map(run => run.text).join('')).not.toMatch(/[[\]()]/)
+      expect((layout(frame, 200)[0] ?? []).map(run => run.text).join('')).not.toMatch(/[[\]()]/)
     }
     const runs = layout(grow('Read now.', parse(long), 1, () => '', word => tint('#d3bdff', word)), 200)[0] ?? []
     expect(runs.filter(run => run.href).map(run => [run.text, run.tint, run.href])).toEqual([['the docs page', '#d3bdff', 'https://x.invalid/a']])
   })
 
-  test('a word that stands only in a link\'s target, or ends a URL, is not the short word', async () => {
-    expect(grow('thread', parse('See [the forum](https://x.invalid/thread) now'), 0, () => '')).toBe('')
-    expect(grow('the guide', parse('the docs at https://docs.invalid/guide'), 0, () => '')).toBe('the')
+  test('a file\'s name gives way to its path when the path arrives', async () => {
+    expect(grow('result.md', parse('logs/r69/result.md'), 0, () => '')).toBe('result.md')
+    expect(grow('result.md', parse('logs/r69/result.md'), 1, () => '')).toBe('logs/r69/result.md')
   })
 
-  test('a path that ends in the short form\'s file name anchors it', async () => {
-    expect(grow('result.md', parse('logs/r69/result.md'), 0, () => '')).toBe('logs/r69/result.md')
-    expect(grow('I ran `attention observe`.', parse('I ran `target/debug/attention observe --for request`.'), 0, () => '')).toBe('I ran `target/debug/attention observe')
-    expect(grow('result.md', parse('logs/r69/other.md'), 0, () => '')).toBe('')
+  // The paragraph as the screen draws it, at a width that wraps it: a stretch closed, or open with no
+  // «, or growing, at its first and its last frame.
+  describe('nothing moves when a stretch turns into or out of its short form', () => {
+    const drawnWith = (middle: string) => layout(`It is said that ${middle} And so on.`, 28).map(row => row.map(run => run.text).join(''))
+    const nested = (stretch: Stretch) => link('open', stretch.key, stretch.short)
+    const paint = (word: string) => tint(SOFT[0], word)
+    // The first frame of a growth and the last of a shrink, and the last of a growth and the first of
+    // a shrink, at the progress the frame clock reaches them.
+    const NEAR = 0.0001
+    for (const [name, short, long] of [
+      ['punctuation the long form changes', 'The build fails on a stale cache.', 'The CI build fails, about one run in five, on a stale dependency cache keyed only by `package.json`.'],
+      ['a word in another case', 'Tests pass.', 'All tests pass, on both machines.'],
+      ['a short form the long form keeps nothing of', 'Done.', 'Every step finished without an error.'],
+      ['a nested stretch', 'A monad wraps values.', 'In programming, a monad {{wraps values|wraps plain values in a context}} and chains steps.'],
+      ['a long form over several lines', 'Two files changed.', 'Two files changed:\n\n- `a.ts`\n- `b.ts`'],
+      ['an underscore the short form leaves unpaired', 'Set _id first.', 'Set _id first, then the rest of the record.'],
+      ['a star the long form leaves unpaired', 'Match the files.', 'Match the *.ts files, and only those.'],
+      ['Chinese', '核心是道，与无为。', '《道德经》的核心是道，也就是万物运行的根本规律，与人顺着道去做事的无为。'],
+    ] as const) {
+      test(name, async () => {
+        const [stretch] = stretches(parse(`{{${short}|${long}}}`))
+        if (stretch?.long === undefined) throw new Error('no stretch')
+        const closed = drawnWith(link('open', stretch.key, stretch.short))
+        const open = drawnWith(grow(stretch.short, stretch.long, 1, nested, paint))
+        for (const progress of [0, NEAR]) expect(drawnWith(grow(stretch.short, stretch.long, progress, nested, paint))).toEqual(closed)
+        expect(drawnWith(grow(stretch.short, stretch.long, 1 - NEAR, nested, paint))).toEqual(open)
+      })
+    }
   })
 })
 
@@ -664,7 +701,7 @@ describe('layout', () => {
     for (const [short, long] of [['Use the cache.', 'Use _the cache for every build_.'], ['缓存。', '使用*缓存和索引*加速。']] as const) {
       test(`no frame of ${long} growing from ${short} draws its opening mark before its closing one`, () => {
         for (let step = 0; step < 20; step += 1) {
-          const frame = (layout(asArriving(grow(short, parse(long), step / 20, () => '')), 200)[0] ?? []).map(run => run.text).join('')
+          const frame = (layout(grow(short, parse(long), step / 20, () => ''), 200)[0] ?? []).map(run => run.text).join('')
           expect(frame).not.toMatch(/[*_]/)
         }
       })
