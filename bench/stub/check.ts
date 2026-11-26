@@ -401,20 +401,20 @@ check(
   `${r.output}\n${otherVersion.output}`,
 )
 r = resend(['run', '--arm', 'g0', '--arm', 'closing-gist-first', '--repeats', '2'])
-const toolRun = resend(['run', '--arm', 'series-named', '--repeats', '1', '--case', '0'], { STUB_TOOL_MATCH: 'name each part' })
+const toolRun = resend(['run', '--arm', 'series-short', '--repeats', '1', '--case', '0'], { STUB_TOOL_MATCH: 'briefly name every part' })
 const again = resend(['run', '--arm', 'g0', '--arm', 'closing-gist-first', '--repeats', '2'])
 const resendReport = resend(['report'])
 check(
   'the run command sends each case under each arm with the guide swapped, a resume sends nothing again, and the report counts what became of the closing block',
-  r.status === 0 && toolRun.status === 0 && toolRun.output.includes('case 0, series-named, repeat 1: asked for a tool') && again.status === 0 && !again.output.includes('case 0') &&
+  r.status === 0 && toolRun.status === 0 && toolRun.output.includes('case 0, series-short, repeat 1: asked for a tool') && again.status === 0 && !again.output.includes('case 0') &&
     // Arms are printed in the order guides.ts names them.
     resendReport.output.includes('2 cases, 9 requests sent under 9.9.9 (Claude Code)') &&
-    resendReport.output.includes('| | g0 | series-named | closing-gist-first |') &&
+    resendReport.output.includes('| | g0 | series-short | closing-gist-first |') &&
     resendReport.output.includes('| asked for a tool | 0 | 1 | 0 |') &&
     resendReport.output.includes("| closing stretch begins with its gist's line | 0 | 0 | 4 |") &&
     resendReport.output.includes('| closing stretch drops a word of its gist | 4 | 0 | 0 |') &&
-    resendReport.output.includes('- case 0 (claude-opus-5-5, g0, D): g0 DD | series-named t | closing-gist-first GG') &&
-    resendReport.output.includes('- case 1 (claude-opus-5-5, g0, D): g0 DD | series-named - | closing-gist-first GG'),
+    resendReport.output.includes('- case 0 (claude-opus-5-5, g0, D): g0 DD | series-short t | closing-gist-first GG') &&
+    resendReport.output.includes('- case 1 (claude-opus-5-5, g0, D): g0 DD | series-short - | closing-gist-first GG'),
   `${r.output}\n${toolRun.output}\n${again.output}\n${resendReport.output}`,
 )
 const kept = readdirSync(join(resendOut, 'replies'))

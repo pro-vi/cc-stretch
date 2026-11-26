@@ -501,6 +501,33 @@ answers under `g0`, 5 under `series-named` and 3 under `series-short`. Its close
 longer: 72 words an answer, against 62 under `series-named` and 60 under `g0`. Not run under
 Fable 5.2.
 
+`series-named` then went to a trial in live sessions and replaced the plugin's guide. From
+2026-11-12 half of one reader's sessions on two machines, picked by session id, carried it in place
+of the guide (Claude Code 2.1.322 to 2.1.332). The rule was written down before the first session:
+one read, once both guides had 55 sessions with a counted link under one model; adopt if the whole
+interval of the label rate's difference lies below zero and no other rate's whole interval lies
+above it. Read on 2026-11-25, with Sonnet 5.5 judging each link in view, a closing block's left
+out, and each interval taken over sessions:
+
+| | Opus 5.5, guide then `series-named` | Fable 5.2 |
+|---|---|---|
+| sessions with a counted link | 77 and 73 | 14 and 21 |
+| a link in view is a label | 196 of 1,761 (11%) and 63 of 2,275 (3%): -8 points (-15 to -4) | 61 of 570 (11%) and 8 of 811 (1%): -10 (-17 to -4) |
+| a link hides several sections or a list, by reply | 25% and 13%: -12 (-21 to +1) | 18% and 1%: -17 (-34 to -7) |
+| a long reply holds no stretch | 22% and 13%: -9 (-21 to +3) | 0 of 164 and 2 of 256: +1 (0 to +3) |
+| `keeps-short-words`, a closing block's stretch left out | 36% and 50%: +14 (-5 to +29) | 10% and 14%: +3 (-9 to +13) |
+| words with every stretch closed, of words with every one open | 56% and 49% | 15% and 34% |
+
+Sonnet 5.5 had 5 and 2 such sessions, too few to read. What the read leaves open: under Opus a
+long form dropped a word of its short form in more replies, a closing block's stretch aside, by an
+interval that still holds zero, and which stretches those are has not been read. The place of
+`keeps-short-words` in the rule was changed during the trial, after a look at its rates, to leave
+a closing block's stretch out. The reader knew the trial was on, and the judge is a model.
+
+The table was counted at commit `effa0b7`. From the commit that took the lines up, `bench/live.ts`
+calls the trial's `series-named` sessions `shipped` and the sessions under the earlier guide
+`unnamed`, unless that guide's text is given with `--guide`.
+
 ## closing-gist-kept
 
 In 24 of 35 replies written under the shipped guide (live requests sent again, Opus 5.5, Claude
@@ -510,7 +537,9 @@ The guide asks for that short form to be "a one-line gist of the block" and for 
 keep its short form's words. Not known: what the reader sees when such a stretch opens.
 
 Measured on 2026-11-16 (Opus 5.5 and Fable 5.2 at xhigh effort; live sessions on Claude Code
-2.1.322 to 2.1.325, tasks and requests sent again on 2.1.326, counted with the newer matching):
+2.1.322 to 2.1.325, tasks and requests sent again on 2.1.326, counted with the newer matching).
+"The shipped guide", `g0` and `series-named` here and above are the guides as they were that day;
+the plugin's guide has since taken up `series-named`'s lines (`label-short-forms`):
 
 - The words go missing where the gist is a new sentence and the long form is the block alone. Two
   other forms keep them: the long form begins with the gist's own line, or the gist is built from

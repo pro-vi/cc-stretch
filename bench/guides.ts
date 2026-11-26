@@ -45,6 +45,7 @@ const SERIES_EXAMPLE = 'Example: "{{Next: key the cache on the lockfile; drop th
 const SERIES = `- A short form says what its long form says, in fewer words, however many that takes. When the long form is a plan or a series, its short form is that series with each part cut to a few words, never a sentence that only announces it. ${SERIES_EXAMPLE}`
 
 const AFTER_COPY = '- To write a long form, copy its short form'
+const AFTER_SERIES = '- A short form says what its long form says'
 const SERIES_NAMED = `- A short form says what its long form says, in fewer words, however many that takes. When the long form is a plan or a series, its short form is that series with each part named in a few words. A count of the parts ("three fixes"), a word for what remains ("the rest", "a few follow-ups") and a sentence that only announces them are not short forms: name each part. ${SERIES_EXAMPLE}`
 const SERIES_SHORT = `- A short form states the substance of its long form. For a plan or series, briefly name every part; a count, "the rest," or an announcement is not enough. ${SERIES_EXAMPLE}`
 const COPY_SHORT = '- Write the long form by copying the short form, then adding words without deleting, replacing or reordering any. If necessary, revise the short form first.'
@@ -81,18 +82,12 @@ const RECIPES: Readonly<Record<string, readonly (readonly [anchor: string, line:
   'headings-outside': [[AFTER_SHORTEST, LIST], [LIST, '- Keep topic headings as ordinary text. Make the statement beneath each heading a stretch.']],
   /** Draft the reply in thinking first, and choose each short form's words there. */
   'draft-in-thinking': [[AFTER_LONG, '- Draft the reply in your thinking first, as plain sentences with all their detail, and choose there the words each detail grows around. Then write the reply from the draft, opening each stretch before those words: a stretch opens before its short form, so a sentence already written can no longer become one.']],
-  /** How to write a long form so that it keeps its short form's words: copy them, then add. In live replies the long form was often the detail written as a new sentence. */
+  /** How to write a long form so that it keeps its short form's words: copy them, then add. In live replies the long form was often the detail written as a new sentence. The plugin's guide has since taken this line up, so copy-then-add now equals g0. */
   'copy-then-add': [[AFTER_KEEPS, COPY]],
-  /** A long form that is a plan or a series gets that series, cut down, as its short form. In live replies such a short form was often the sentence that announces the series. */
-  'series-gist': [[LIST, SERIES]],
-  /** series-gist with copy-then-add: a series for a short form drops or reorders its words more often, which the copy line is for. */
-  'series-copy': [[LIST, SERIES], [AFTER_KEEPS, COPY]],
-  /** series-copy, naming the short forms that stand in for a series without saying it: writing the series tasks from scratch under series-copy, Opus 5.5 still wrote "two bugs fixed" and "the rest". */
+  /** The copy line, and a series bullet that names the short forms standing in for a series without saying it: writing the series tasks from scratch under series-copy, Opus 5.5 still wrote "two bugs fixed" and "the rest". The plugin's guide has since taken both lines up, after a trial in live sessions, so series-named now equals g0. */
   'series-named': [[LIST, SERIES_NAMED], [AFTER_KEEPS, COPY]],
   /** series-named, with a line against dropping a detail: under series-copy the opened answers left out more of a task's lesser points. */
   'series-kept': [[LIST, SERIES_NAMED], [AFTER_KEEPS, COPY], [AFTER_COPY, '- Leave no detail out to keep a long form close to its short form: a detail with no short form of its own goes into the long form nearest to it.']],
-  /** series-named with its two lines in fewer words, and the same example. */
-  'series-short': [[LIST, SERIES_SHORT], [AFTER_KEEPS, COPY_SHORT]],
   /** A sentence that only introduces what follows stays in view as plain text, and what it introduces is stretched. */
   'lead-in-outside': [[LIST, '- A sentence that only introduces what follows it, such as "Here is the plan:", "Two things changed." or "I would shape it like this.", is never a short form. Leave it as plain text outside the stretch, and stretch what it introduces, each part under a short form that states it.']],
   /** A stretch that hides several sections or a list gets a one-line gist for its short form, as the closing block does. */
@@ -114,18 +109,19 @@ const additions = Object.fromEntries(
  * a new sentence that no line of the block held, so the long form dropped the short form's words.
  */
 const CLOSING_GIST_FIRST = '- Make a required closing block the last stretch: short form, a one-line gist; long form, that exact line followed by the unchanged block.'
-/** The variant `name` with its closing-block bullet replaced by CLOSING_GIST_FIRST. */
-function withClosingGistFirst(name: string): string {
-  const text = additions[name]
-  if (text === undefined) throw new Error(`no variant named ${name}`)
-  return withReplaced(text, AFTER_CLOSING, CLOSING_GIST_FIRST)
-}
+/** `guide` with its closing-block bullet replaced by CLOSING_GIST_FIRST. */
+const withClosingGistFirst = (guide: string) => withReplaced(guide, AFTER_CLOSING, CLOSING_GIST_FIRST)
+const closingFirstGuide = withClosingGistFirst(GUIDE)
+/** The plugin's guide with its series bullet as first worded: the series cut down, "never a sentence that only announces it". In live replies such a short form was often the sentence that announces the series. */
+const seriesFirstGuide = withReplaced(GUIDE, AFTER_SERIES, SERIES)
+/** The plugin's guide with the two lines it took up from series-named in fewer words, and the same example. */
+const seriesShortGuide = withReplaced(withReplaced(GUIDE, AFTER_SERIES, SERIES_SHORT), AFTER_COPY, COPY_SHORT)
 const listGuide = withLine(GUIDE, AFTER_SHORTEST, LIST)
 const withoutLengthRule = withReplaced(listGuide, AFTER_SHORTEST, '- Anything the reader must decide or do stays outside every stretch.')
 
 const SHORT_LONG = "- The long form keeps every short-form word in order, adding words before, between and after them. It must read correctly in the short form's place."
 const SHORT_INLINE = '- Short forms are plain inline text on one line. Keep stretches out of code, tables and headings.'
-/** The plugin's guide with its explanatory prose cut, keeping its rules and example. */
+/** The plugin's guide as it was before it took up the series and copy lines, with its explanatory prose cut, keeping its rules and example. */
 const SHORTENED = `# Stretchtext replies
 
 Write \`{{short|long}}\`: the reader sees short; a click replaces it with long in place.
@@ -151,9 +147,15 @@ const GROWTH = withReplaced(SHORTENED, SHORT_LONG, SHORT_LONG_GROWTH)
 
 export const VARIANTS: Readonly<Record<string, string>> = {
   ...additions,
-  'closing-gist-first': withClosingGistFirst('g0'),
-  'series-named-closing': withClosingGistFirst('series-named'),
-  'series-short-closing': withClosingGistFirst('series-short'),
+  /** The series bullet as first worded, with the copy line: a series for a short form drops or reorders its words more often, which the copy line is for. */
+  'series-copy': seriesFirstGuide,
+  /** Tried without the copy line, which the plugin's guide has since taken up, so series-gist now equals series-copy. Named after it, so a count that meets this text calls it series-copy. */
+  'series-gist': seriesFirstGuide,
+  'series-short': seriesShortGuide,
+  'closing-gist-first': closingFirstGuide,
+  /** Tried as series-named with the closing bullet reworded; series-named now equals g0, so this equals closing-gist-first. */
+  'series-named-closing': closingFirstGuide,
+  'series-short-closing': withClosingGistFirst(seriesShortGuide),
   shortened: SHORTENED,
   'shortened-growth': GROWTH,
   'shortened-growth-words': withReplaced(GROWTH, SHORT_INLINE, SHORT_INLINE_WORDS),

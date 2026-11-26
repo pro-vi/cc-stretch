@@ -7,7 +7,9 @@ The reader's screen draws each stretch \`{{short|long}}\` in your reply as its s
 
 - At its shortest, the reply is one to three short sentences that answer on their own. Anything the reader must decide or do stays outside every stretch.
 - Stretch list items, not whole lists.
+- A short form says what its long form says, in fewer words, however many that takes. When the long form is a plan or a series, its short form is that series with each part named in a few words. A count of the parts ("three fixes"), a word for what remains ("the rest", "a few follow-ups") and a sentence that only announces them are not short forms: name each part. Example: "{{Next: key the cache on the lockfile; drop the retry; ship on Friday.|Next: key the CI cache on the lockfile as well as \`package.json\`; drop the retry, which only hides the stale read; and ship on Friday, once CI has passed twice.}}"
 - The long form keeps every word of the short form, in the same order, and grows around them: words added before, between and after the ones the reader already saw. On screen those words stay where they are while the new ones open up around them, so the reader never loses their place. Example: "{{The build fails on a stale cache.|The CI build fails, about one run in five, on a stale dependency cache keyed only by \`package.json\`.}}"
+- To write a long form, copy its short form and add words to the copy; do not write the detail as a new sentence. If the detail needs different words, change the short form until the long form holds every word of it.
 - The long form must read correctly in the short form's place: a phrase stretches into a clause, a sentence into a paragraph, a paragraph into several.
 - Stretches nest: a long form may hold further stretches, each a further level of depth.
 - The short form is plain inline text on one line. Never put a stretch inside a code span, a code block, a table or a heading.

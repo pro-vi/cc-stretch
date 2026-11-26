@@ -366,8 +366,20 @@ describe('tasks and guide variants', () => {
     }
   })
 
+  test('a variant that rewords rows the plugin guide took up differs from it in those rows alone', async () => {
+    const guideRows = GUIDE.split('\n')
+    /** The start of each row of the plugin guide that the variant `name` words otherwise, row for row. */
+    const reworded = (name: string) => {
+      const rows = (VARIANTS[name] ?? '').split('\n')
+      expect([name, rows.length]).toEqual([name, guideRows.length])
+      return guideRows.filter((row, at) => row !== rows[at]).map(row => row.slice(0, 30))
+    }
+    expect(reworded('series-copy')).toEqual(['- A short form says what its l'])
+    expect(reworded('series-short')).toEqual(['- A short form says what its l', '- To write a long form, copy i'])
+  })
+
   test('variants that replace the closing-block bullet differ from their base in that row alone', async () => {
-    for (const [name, base] of [['closing-gist-first', 'g0'], ['series-named-closing', 'series-named'], ['series-short-closing', 'series-short']] as const) {
+    for (const [name, base] of [['closing-gist-first', 'g0'], ['series-short-closing', 'series-short']] as const) {
       const rows = (VARIANTS[name] ?? '').split('\n')
       const baseRows = (VARIANTS[base] ?? '').split('\n')
       const at = baseRows.findIndex(row => row.startsWith('- If other instructions require a closing block'))

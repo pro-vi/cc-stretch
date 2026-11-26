@@ -120,7 +120,7 @@ export const RULES: readonly Rule[] = [
   // asked for, hidden whole behind a sentence that only announces it ("I would shape it like this.").
   {
     id: 'series-in-view',
-    bullet: 'At its shortest, the reply answers on its own.',
+    bullet: 'When the long form is a plan or a series, its short form is that series with each part named in a few words.',
     appliesTo: task => (task.series?.length ?? 0) > 0,
     breach: ({ skim }, task) => notInSkim(skim, task.series ?? []),
   },
