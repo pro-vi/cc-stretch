@@ -37,15 +37,16 @@
 // function of the film's time.
 //
 // A card scene is { kind: 'card', len, html, cls?, clawd?, clicks?, boings?, thuds? }: its html is a
-// string or a function of the seconds into the scene, each click ({ at, x, y }) lands that many
-// seconds into it at that pixel, and each boing (a spring let go) or thud (a landing) sounds that many
-// seconds into it. A take scene is { kind: 'take', len, from, to, caption, small?, focus, zoom?,
+// string or a function of the seconds into the scene, each click ({ at, x, y, travel? }) lands that
+// many seconds into it at that pixel, the pointer taking `travel` seconds to get there (1 unless
+// given), and each boing (a spring let go) or thud (a landing) sounds that many seconds into it. A take scene is { kind: 'take', len, from, to, caption, small?, focus, zoom?,
 // growth?, click?, keys?, cutIn? }: it plays take seconds `from` to `to` (a growth plays each captured
 // screen evenly first), a click ({ row, col }) or keys (['⌥', '↓']) land as it ends, and it fades
 // from and to cream beside a scene of another kind, unless cutIn says it starts on a cut. A custom
-// scene is { kind: 'custom', len, draw }: draw(seconds into the scene, scene) shows the layers it
-// needs, every layer of the stage being hidden before each frame, and does its own fading; it gets
-// no pointer. Any scene may carry cues, { name: [seconds into the scene] }, which reach the release's
+// scene is { kind: 'custom', len, draw, clicks? }: draw(seconds into the scene, scene) shows the
+// layers it needs, every layer of the stage being hidden before each frame, and does its own fading
+// and its own pointer (pointTo, with its clicks in seconds into the scene, as draw's time is); its
+// clicks sound as a card's do. Any scene may carry cues, { name: [seconds into the scene] }, which reach the release's
 // own music.js as CUES.named[name], in the film's seconds.
 let SCENES = null;
 function build() {

@@ -1,8 +1,9 @@
 // The 0.6.0 film's soundtrack, played on the instruments in instruments.js. A busy piano and a key's
 // tick for every few words as the long reply is written; a low fifth and a held chord as the camera
 // pulls back to all of it; bells as the short reply arrives and lands. Then the electric piano walks
-// the progression through the take, with a tick at every click, three rising music-box notes as a
-// step opens and three falling as one closes. The card on what changed holds a chord. On the 1967
+// the progression through the take and the style toolbar, with a tick at every click, three rising
+// music-box notes as a phrase opens and three falling as one closes, and one note up the box for
+// each style tried. The card on what changed holds a chord. On the 1967
 // page a drone, and a music-box note for each word that pops into the sentence, as in the launch
 // film; Clawd's chirp as it walks in; and on the end card the tonic, a note for each word the tagline
 // gains, the boing as Clawd is let go, and its chirp once more.
@@ -26,10 +27,10 @@ window.renderMusic = ({ total, takes, clicks, boings = [], named }) => window.pl
 	bellPair(beside - 0.1);
 	bell(landed, 86, 0.05);
 
-	// The take.
-	const taken = takes.at(-1)[1];
-	walk(takes[0][0], taken);
+	// The take, and the style toolbar after it.
+	walk(takes[0][0], changed);
 	clickTicks(clicks);
+	named.looks.forEach((at, i) => bell(at + 0.03, BOX[i], 0.04));
 	named.grow.forEach((at, i) => [0, 2, 3].forEach((step, k) => bell(at + k * 0.11, BOX[i + step], 0.045)));
 	for (const at of named.shrink) [3, 2, 0].forEach((step, k) => bell(at + k * 0.11, BOX[step], 0.04));
 

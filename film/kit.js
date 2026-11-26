@@ -286,17 +286,22 @@ function setImage(target, src) {
 /** When a press shows in the take: the first frame after take second `t`, less 0.15 s. */
 const changed = (t) => (window.TAKE.frames.find((f) => f.t > t)?.t ?? t) - 0.15;
 
-/** The pointer travels to each click, given in the frame's pixels, and a ring spreads where it lands. */
+/**
+ * The pointer travels to each click, given in the frame's pixels, and a ring spreads where it lands.
+ * It takes a second on the way, or the click's own `travel`: clicks less than 1.45 s apart need a
+ * shorter one, as the pointer leaves only once the ring of the click before has spread.
+ */
 function pointTo(clicks, t) {
 	const next = clicks.find((c) => t <= c.at + 0.35);
 	const prev = [...clicks].reverse().find((c) => t > c.at + 0.35);
-	if (!next || t <= next.at - 1.3) {
+	const travel = next?.travel ?? 1;
+	if (!next || t <= next.at - 0.3 - travel) {
 		$('pointer').style.opacity = 0;
 		$('ring').style.opacity = 0;
 		return;
 	}
 	const from = prev ?? { x: W - 260, y: H - 120 };
-	const k = ease(span(t, next.at - 1.1, next.at - 0.1));
+	const k = ease(span(t, next.at - 0.1 - travel, next.at - 0.1));
 	$('pointer').style.opacity = 1;
 	$('pointer').style.transform = `translate(${lerp(from.x, next.x, k) - 6}px, ${lerp(from.y, next.y, k) - 4}px)`;
 	const r = span(t, next.at, next.at + 0.35);

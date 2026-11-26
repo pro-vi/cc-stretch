@@ -2,7 +2,7 @@
 // 20260905-195314-b99b1ca2): text with SGR colour codes, truecolor written with colons
 // (`38:2::r:g:b`), and OSC 8 hyperlinks. Returns rows of styled runs, each with the column it
 // starts at, so a renderer can place every run exactly and a driver can find what to click or type:
-// a link, an underlined phrase, a keyboard letter.
+// a link, an underlined phrase, a highlighted phrase, a keyboard letter.
 
 /** @typedef {{ fg: string | null, bg: string | null, bold: boolean, dim: boolean, italic: boolean, underline: boolean, inverse: boolean }} Style */
 /** @typedef {Style & { text: string, col: number, link: string | null }} Run */
@@ -156,29 +156,43 @@ export function linksOn(rows, pattern) {
 }
 
 /**
- * Every underlined phrase on screen, which is what a press acts on in the reply region the plugin
- * draws: a closed stretch's short form, or an open one's «. Adjacent underlined runs on a row join,
- * and so does a phrase that ends its row with one that starts the next: a short form wrapped in two.
- * A phrase keeps the row and columns of its first part, where a click lands.
+ * Every phrase on screen that carries a mark: markOf gives a run's mark, or null. Adjacent runs of one
+ * mark on a row join, and so does a phrase that ends its row with one of the same mark that starts the
+ * next: a short form wrapped in two. A phrase keeps the row and columns of its first part, where a
+ * click lands.
  */
-export function pressablesOn(rows) {
+function phrasesOn(rows, markOf) {
 	const found = [];
-	// The row whose text ended in an underlined phrase, which an underlined first run on the next row continues.
-	let endedUnderlined = -1;
+	// The row whose text ended in a marked phrase, which a first run of that mark on the next row continues.
+	let endedRow = -1;
 	rows.forEach((runs, row) => {
 		const textRuns = runs.filter((run) => run.text.trim() !== '');
 		textRuns.forEach((run, i) => {
-			if (run.underline) {
+			const mark = markOf(run);
+			if (mark !== null) {
 				const last = found.at(-1);
-				if (i === 0 && endedUnderlined === row - 1 && last) last.text += ` ${run.text.trimStart()}`;
-				else if (last && last.row === row && last.end === run.col) { last.end += textWidth(run.text); last.text += run.text; }
-				else found.push({ row, col: run.col, end: run.col + textWidth(run.text), text: run.text });
+				if (i === 0 && last && endedRow === row - 1 && last.mark === mark) last.text += ` ${run.text.trimStart()}`;
+				else if (last && last.row === row && last.end === run.col && last.mark === mark) { last.end += textWidth(run.text); last.text += run.text; }
+				else found.push({ row, col: run.col, end: run.col + textWidth(run.text), text: run.text, mark });
 			}
-			if (i === textRuns.length - 1) endedUnderlined = run.underline ? row : -1;
+			if (i === textRuns.length - 1) endedRow = mark === null ? -1 : row;
 		});
 	});
 	return found;
 }
+
+/**
+ * Every underlined phrase on screen, which is what a press acts on in the reply region the plugin
+ * draws under its default style: a closed stretch's short form, or an open one's «.
+ */
+export const pressablesOn = (rows) => phrasesOn(rows, (run) => (run.underline ? 'underline' : null));
+
+/**
+ * Every phrase on a background colour, each colour apart. Under the plugin's tinted highlight a closed
+ * stretch's short form is one; so is a prompt the person sent, which Claude Code 2.1.332 draws on
+ * grey, so a caller keeps to the rows it means.
+ */
+export const highlightedOn = (rows) => phrasesOn(rows, (run) => run.bg);
 
 /** The keyboard letters on screen: a bold lowercase letter on a coloured background, with its cell. */
 export function lettersOn(rows) {

@@ -39,7 +39,9 @@ As of Claude Code 2.1.302 a session reads a click's position in cells, counted f
 `--debug-file` log says `Mouse reports in pixels`, and in pixels from then on, at a cell's middle
 pixel. In these runs the switch came once a reply holding a stretch was drawn, so a click sent in
 pixels before that, such as on the style toolbar in a new session, is lost. Read the log before each
-click, as `openPane`'s `mouse` does when it is given the log.
+click, as `openPane`'s `mouse` does when it is given the log. A film's take runs without the log,
+whose banner Claude Code 2.1.332 draws at the top of the session: its script says which clicks come
+before the first reply, and `startTake`'s `click` sends those as cells (`inCells`).
 
 `film/e2e/` holds checks built on that pattern: `node film/e2e/<check>.mjs <package> <outDir>` starts
 the session, runs steps that pass or fail on what the screen shows, writes every screen and a report

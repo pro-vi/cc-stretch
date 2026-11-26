@@ -9,7 +9,7 @@ import { execFile, execFileSync } from 'node:child_process';
 import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { promisify } from 'node:util';
-import { firstCarriedRow, lettersOn, linksOn, parseScreen, plainRows, pressablesOn, turnsDone } from './screen.mjs';
+import { firstCarriedRow, highlightedOn, lettersOn, linksOn, parseScreen, plainRows, pressablesOn, turnsDone } from './screen.mjs';
 
 const run = promisify(execFile);
 export const REPO = new URL('..', import.meta.url).pathname.replace(/\/$/, '');
@@ -93,7 +93,8 @@ export function openPane({ cols, rows, command, t0, frames = [], debugFile }) {
 	const send = (keys) => wez('send-text', '--pane-id', pane, '--no-paste', keys);
 	// As of Claude Code 2.1.302 a session reads the pointer in cells, counted from 1, until its debug log
 	// says it reads pixels; a pixel is sent at the cell's middle, from the pane's size. Without a log
-	// the session is taken to read pixels, as it does once a reply holding a stretch is drawn.
+	// the session is taken to read pixels, as it does once a reply holding a stretch is drawn, unless
+	// the click says it is made before that (`inCells`, in mouse below).
 	const isPixels = () => {
 		if (debugFile === undefined) return true;
 		try {
@@ -121,9 +122,9 @@ export function openPane({ cols, rows, command, t0, frames = [], debugFile }) {
 		/** The screen as last recorded, escapes and all. */
 		last: () => last,
 		send,
-		/** Sends a mouse report for `button` over a cell, a release when `isUp`; returns whether it was in pixels. */
-		mouse(button, row, col, isUp = false) {
-			const pixels = isPixels();
+		/** Sends a mouse report for `button` over a cell, a release when `isUp`, as a cell when `inCells` whatever the session's log says; returns whether it was in pixels. */
+		mouse(button, row, col, isUp = false, inCells = false) {
+			const pixels = !inCells && isPixels();
 			const [x, y] = pixels ? [Math.round((col + 0.5) * size.pixel_width / size.cols), Math.round((row + 0.5) * size.pixel_height / size.rows)] : [col + 1, row + 1];
 			send(`\x1b[<${button};${x};${y}${isUp ? 'm' : 'M'}`);
 			return pixels;
@@ -200,13 +201,18 @@ export async function startTake({ out, append, cols = 100, rows = 30, sources = 
 		}
 	}
 
-	/** Clicks the middle of a phrase, as a mouse would: press and release over its middle cell. */
-	async function click(name, found) {
+	/**
+	 * Clicks the middle of a phrase, as a mouse would: press and release over its middle cell. A take
+	 * runs without a debug log, whose banner Claude Code 2.1.332 draws at the top of the session, so
+	 * nothing says which unit its session reads: a click made before the session has drawn a reply
+	 * that holds a stretch says `inCells`.
+	 */
+	async function click(name, found, inCells = false) {
 		const row = found.row, col = Math.floor((found.col + found.end) / 2);
 		mark(name, { row, col, link: found.link });
-		pane.mouse(0, row, col);
+		pane.mouse(0, row, col, false, inCells);
 		await sleep(70);
-		pane.mouse(0, row, col, true);
+		pane.mouse(0, row, col, true, inCells);
 	}
 
 	/** Presses `keys` and marks it as `name`, with the letters the press put on screen once it settles. */
@@ -261,6 +267,6 @@ export async function startTake({ out, append, cols = 100, rows = 30, sources = 
 
 	return {
 		mark, type, click, press, settle, still, ready, ask, finish, text, screen, send, waitFor,
-		links: (pattern) => linksOn(screen(), pattern), pressables: () => pressablesOn(screen()),
+		links: (pattern) => linksOn(screen(), pattern), pressables: () => pressablesOn(screen()), highlighted: () => highlightedOn(screen()),
 	};
 }
