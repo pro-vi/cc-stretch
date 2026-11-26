@@ -2,7 +2,7 @@
 // runs, wrapped to the region's width, so a press can be matched to the phrase under it. Claude
 // Code draws every paragraph without a stretch with its own markdown.
 
-import { closesFence, codeSpan, drawnAs, isLinkable, isRule, openingFence, stretches } from './parse'
+import { closeAfter, closesFence, codeSpan, drawnAs, isLinkable, isRule, openingFence, stretches } from './parse'
 import type { Segment, Stretch } from './parse'
 
 /** What a press on a pressable phrase does to its stretch. */
@@ -48,8 +48,12 @@ const START = '\ufdd0'
 const SEP = '\ufdd1'
 const END = '\ufdd2'
 const PHRASE_MARK = /[\ufdd0-\ufdd2]/
-/** What a pressable phrase adds around its label, none of it drawn: its start with the action and key it carries, and its end. For `replace`. */
-const PHRASE_FRAME = new RegExp(`${START}[^${SEP}]*${SEP}[^${SEP}]*${SEP}|${END}`, 'g')
+/** What a pressable phrase puts before its label: its start mark with the action and key it carries. */
+const PHRASE_OPEN = `${START}[^${SEP}]*${SEP}[^${SEP}]*${SEP}`
+/** What a pressable phrase adds around its label, none of it drawn: what it puts before it, and its end. For `replace`. */
+const PHRASE_FRAME = new RegExp(`${PHRASE_OPEN}|${END}`, 'g')
+/** What a pressable phrase puts before its label, where a search is told to look (`lastIndex`). */
+const PHRASE_OPEN_AT = new RegExp(PHRASE_OPEN, 'y')
 const TINT = '\ufdd3'
 const TINT_END = '\ufdd4'
 const ARRIVING = '\ufdd5'
@@ -373,13 +377,36 @@ export function targetsIn(parts: Segment[], open: readonly string[], action: Act
   })
 }
 
+/**
+ * An open stretch's long form followed by its `closer`, as `closeAfter` puts it, and after `gap` when
+ * the long form ends in a table row too, where the closer would be read as one more cell. It is here,
+ * not in parse.ts, which the bench hashes as part of the code that asks its tasks.
+ */
+export function withCloser(long: string, closer: string, gap: string): string {
+  const trimmed = long.trimEnd()
+  const last = lineOf(trimmed.slice(trimmed.lastIndexOf('\n') + 1)).text
+  return TABLE_ROW.test(last) ? `${trimmed}${gap}${closer}` : closeAfter(long, closer, gap)
+}
+
 /** The rows `text` takes in a region `columns` cells wide. */
 export function layout(text: string, columns: number): Row[] {
   const width = Math.max(10, columns)
   const rows: Row[] = []
   let fence: string | undefined
+  // The table rows met since the last line of another kind: a table is laid out whole, once it ends.
+  let table: Line[] = []
+  const endTable = () => {
+    if (table.length === 0) return
+    rows.push(...tableRows(table, width))
+    table = []
+  }
   for (const marked of text.split('\n')) {
     const line = lineOf(marked)
+    if (fence === undefined && TABLE_ROW.test(line.text)) {
+      table.push(line)
+      continue
+    }
+    endTable()
     if (fence !== undefined) {
       if (closesFence(line.text, fence)) fence = undefined
       else rows.push(...cutRows([{ text: `  ${line.text}`, code: true }], width))
@@ -392,8 +419,134 @@ export function layout(text: string, columns: number): Row[] {
     }
     rows.push(...rowsOf(line, width))
   }
+  endTable()
 
   return rows
+}
+
+/**
+ * A table row's entries, each a line of its own without the spaces around it. A row splits at every
+ * `|`, in a code span too, as GitHub's markdown splits it; `\|` is a pipe in an entry's text, and
+ * what a pressable phrase puts before its label is passed over. What stands before the first pipe
+ * is no entry, nor is nothing after the last.
+ */
+function splitRow({ text, tints, arriving }: Line): Line[] {
+  const entries: Line[] = []
+  let entry: Line = { text: '', tints: [], arriving: [] }
+  const put = (ch: string, at: number) => {
+    entry.text += ch
+    entry.tints.push(tints[at])
+    entry.arriving.push(arriving[at] ?? false)
+  }
+  const end = () => {
+    const from = entry.text.length - entry.text.trimStart().length
+    const to = entry.text.trimEnd().length
+    entries.push({ text: entry.text.slice(from, to), tints: entry.tints.slice(from, to), arriving: entry.arriving.slice(from, to) })
+    entry = { text: '', tints: [], arriving: [] }
+  }
+  for (let i = 0; i < text.length; ) {
+    const ch = text[i] ?? ''
+    PHRASE_OPEN_AT.lastIndex = i
+    const opening = ch === START ? PHRASE_OPEN_AT.exec(text)?.[0] : undefined
+    if (opening !== undefined) {
+      for (let k = 0; k < opening.length; k++) put(opening[k] ?? '', i + k)
+      i += opening.length
+    } else if (ch === '\\' && text[i + 1] === '|') {
+      put('|', i + 1)
+      i += 2
+    } else if (ch === '\\' && text[i + 1] === '\\') {
+      // Two backslashes are a backslash as text, so a pipe after them splits the row.
+      put(ch, i)
+      put(ch, i + 1)
+      i += 2
+    } else {
+      if (ch === '|') end()
+      else put(ch, i)
+      i += 1
+    }
+  }
+  if (entry.text.trim() !== '') end()
+
+  return entries.slice(1)
+}
+
+/** An entry of the row under a table's header: dashes, with a colon at each end its column is aligned to. */
+const DELIMITER = /^:?-+:?$/
+/** The lines an entry may wrap onto in a table's frame, as of Claude Code 2.1.332: a taller table is written row by row. */
+const TALLEST_ENTRY = 4
+
+/** A rule across the region, `longest` cells wide at most. */
+const ruleRow = (width: number, longest: number): Row => [{ text: '─'.repeat(Math.min(width, longest)), dim: true }]
+
+/**
+ * The rows of the table rows `lines`, which follow one another in a paragraph. With a header and a
+ * row of as many dashes under it they are a table, drawn as Claude Code 2.1.332 draws one in a
+ * paragraph of its own. It stands in a frame, a rule under every row, each column as wide as its
+ * widest entry, a header centred and a column to the side its dashes' colons name. Where that is
+ * wider than the region, each column keeps the width of its widest word and the room left is shared
+ * out by how much each column gave up; entries wrap, and a shorter one stands halfway down its row.
+ * A table whose words do not fit so, or with an entry over more than `TALLEST_ENTRY` lines, is
+ * written row by row instead, each entry on a line of its own after its column's header. A row's
+ * entries past the header's last column are not drawn. Lines that are no table, such as a header
+ * whose dashes have not arrived, are written as typed, cut where the region ends.
+ */
+function tableRows(lines: Line[], width: number): Row[] {
+  const split = lines.map(splitRow)
+  const sides = (split[1] ?? []).map(entry => entry.text)
+  if (sides.length === 0 || sides.length !== split[0]?.length || !sides.every(side => DELIMITER.test(side))) {
+    return lines.flatMap(line => rowsOf(line, width))
+  }
+  // The table's entries by row, the header first, each row with an entry for every column.
+  const table = split.filter((_, r) => r !== 1).map(entries => sides.map((_, c): Run[] => (entries[c] === undefined ? [] : inline(entries[c], false))))
+  const head = table[0] ?? []
+  const columns = sides.map((_, c) => table.map(entries => entries[c] ?? []))
+  const widthOfRuns = (runs: Run[]) => runs.reduce((cells, run) => cells + widthOf(run.text), 0)
+  /** The widest piece of an entry that `wrap` keeps on one row. */
+  const widestWord = (runs: Run[]) => Math.max(0, ...runs.flatMap(run => run.text.split(/ +/).flatMap(breakables).map(widthOf)))
+  // A frame takes a bar before each column and one after the last, and a space on each side of every entry.
+  const framed = (widths: number[]) => widths.reduce((sum, w) => sum + w + 3, 1)
+  const natural = columns.map(entries => Math.max(...entries.map(widthOfRuns)))
+  const least = columns.map(entries => Math.max(...entries.map(widestWord)))
+  const room = width - framed(least)
+  const slack = natural.reduce((sum, w, c) => sum + w - (least[c] ?? 0), 0)
+  const isWide = framed(natural) > width
+  const widths = isWide ? least.map((w, c) => w + Math.floor((room * ((natural[c] ?? 0) - w)) / slack)) : natural
+  const wrapped = isWide && room < 0 ? undefined : table.map(entries => entries.map((runs, c) => wrap(runs, Math.max(1, widths[c] ?? 0), '', '')))
+  if (wrapped === undefined || wrapped.some(entries => entries.some(rows => rows.length > TALLEST_ENTRY))) {
+    const labelled = (c: number): Run[] => [...(head[c] ?? []).map(run => ({ ...run, bold: true as const })), { text: ':', bold: true }]
+    if (table.length === 1) return head.flatMap((_, c) => wrap(labelled(c), width, '', '  '))
+    return table.slice(1).flatMap((entries, r) => [
+      ...(r === 0 ? [] : [ruleRow(width, 40)]),
+      ...entries.flatMap((runs, c) => wrap([...labelled(c), ...(runs.length === 0 ? [] : [{ text: ' ' }, ...runs])], width, '', '  ')),
+    ])
+  }
+  const edge = (left: string, cross: string, right: string): Row => [{ text: `${left}${widths.map(w => '─'.repeat(w + 2)).join(cross)}${right}` }]
+  /** One line of a table row: each entry's own line `k` lines down the row, if it has one there. */
+  const lineOfRow = (entries: Row[][], k: number, isHead: boolean): Row => {
+    const height = Math.max(...entries.map(rows => rows.length))
+    const row: Row = []
+    let bar = '│'
+    widths.forEach((w, c) => {
+      const rows = entries[c] ?? []
+      const runs = rows[k - Math.floor((height - rows.length) / 2)] ?? []
+      const spare = w - widthOfRuns(runs)
+      const side = sides[c] ?? ''
+      const before = isHead || (side.startsWith(':') && side.endsWith(':')) ? Math.floor(spare / 2) : side.endsWith(':') ? spare : 0
+      row.push({ text: `${bar}${' '.repeat(before + 1)}` }, ...runs)
+      bar = `${' '.repeat(spare - before + 1)}│`
+    })
+    row.push({ text: bar })
+    return row
+  }
+
+  return [
+    edge('┌', '┬', '┐'),
+    ...wrapped.flatMap((entries, r) => [
+      ...(r === 0 ? [] : [edge('├', '┼', '┤')]),
+      ...Array.from({ length: Math.max(...entries.map(rows => rows.length)) }, (_, k) => lineOfRow(entries, k, r === 0)),
+    ]),
+    edge('└', '┴', '┘'),
+  ]
 }
 
 /**
@@ -530,8 +683,8 @@ function rowsOf({ text: line, tints, arriving }: Line, width: number): Row[] {
     return inline({ text: rest, tints: tints.slice(from), arriving: arriving.slice(from) }, isBold)
   }
   if (line.trim() === '') return [[]]
-  if (isRule(line)) return [[{ text: '─'.repeat(Math.min(width, 60)), dim: true }]]
-  // A table row keeps its columns: written as is, cut where the region ends.
+  if (isRule(line)) return [ruleRow(width, 60)]
+  // A table row that is not part of a table (tableRows) is written as is, cut where the region ends.
   if (TABLE_ROW.test(line)) return cutRows(inlineOf(line), width)
   const heading = HEADING.exec(line)
   if (heading) return wrap(inlineOf(heading[1] ?? '', true), width, '', '')

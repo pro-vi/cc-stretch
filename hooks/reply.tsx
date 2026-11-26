@@ -1,9 +1,9 @@
 import type { ClientModule, ClientPointerEvent, ClientSurface, TextProps } from 'claude-code'
 
 import { grow, lengthOf } from './grow'
-import { continuationOf, hrefAt, isMarkup, isWebLink, layout, link, linkAt, namesOf, openedOf, targetsIn, tint, widthOf, withLeadIns } from './layout'
+import { continuationOf, hrefAt, isMarkup, isWebLink, layout, link, linkAt, namesOf, openedOf, targetsIn, tint, widthOf, withCloser, withLeadIns } from './layout'
 import type { Action, OpenedStretch, Row, Run } from './layout'
-import { closeAfter, isLinkable, KEY_SEPARATOR, parse } from './parse'
+import { isLinkable, KEY_SEPARATOR, parse } from './parse'
 import { DEFAULT_LOOK, drawsHighlight, lookProps } from './look'
 import type { Hex } from './contrast'
 import type { DrawnLook } from './look'
@@ -181,7 +181,7 @@ function compose(segments: Segment[], state: State, tints: ReadonlyMap<string, T
     if (!state.open.includes(stretch.key)) return link('open', stretch.key, stretch.short)
     const closer = link('close', stretch.key, '«')
     const long = grow(stretch.short, stretch.long, 1, draw, paint)
-    return closeAfter(long, colours === undefined ? closer : tint(colours.closer, closer), '\n')
+    return withCloser(long, colours === undefined ? closer : tint(colours.closer, closer), '\n')
   }
 
   return write(segments, true)

@@ -2,9 +2,9 @@ import { atom, memberOf, read, update } from 'claude-code'
 import type { ClassicEventOf, ClassicResultOf, EngineInterface, Register, RenderInput, RenderNode, SessionMessage } from 'claude-code'
 
 import { GUIDE, takesTrialGuide } from './guide'
-import { closeAfter, codeSpan, hideLongForms, isLinkable, isOpenable, KEY_SEPARATOR, newStreamState, paragraphsOf, parentOf, parse, stretches } from './parse'
+import { codeSpan, hideLongForms, isLinkable, isOpenable, KEY_SEPARATOR, newStreamState, paragraphsOf, parentOf, parse, stretches } from './parse'
 import type { Segment, StreamState, Stretch } from './parse'
-import { isWebLink, namesOf, openedOf, targetsIn } from './layout'
+import { isWebLink, namesOf, openedOf, targetsIn, withCloser } from './layout'
 import type { Action, OpenedStretch } from './layout'
 import { contrastOn, hex, mix } from './contrast'
 import type { Hex, Rgb } from './contrast'
@@ -797,7 +797,7 @@ function linkedMarkdown(parts: Segment[], open: readonly string[], all: Stretch[
       if (open.includes(part.key)) {
         const close = `${HREF}close/${index}`
         links.push(close)
-        return closeAfter(linkedMarkdown(part.long, open, all, links), `[«](${close})`, '\n\n')
+        return withCloser(linkedMarkdown(part.long, open, all, links), `[«](${close})`, '\n\n')
       }
       const href = `${HREF}open/${index}`
       links.push(href)

@@ -148,6 +148,26 @@ to its `--settings` JSON draws the light theme there, and its dim grey says whic
   - Run the check from a folder Claude Code already trusts; it does not answer the trust question,
     which is the person's to answer.
 
+### A table in a paragraph that holds a stretch
+
+- **Reach:** a reply with a stretch whose long form ends in a markdown table, and a table whose
+  cells hold stretches. Ask for both in the prompt: the guide tells Claude to keep stretches out of
+  tables.
+- **Drive:**
+  1. Before any click: the table whose cells hold stretches is drawn in a frame, its columns lined
+     up, as Claude Code draws a table in a paragraph without a stretch.
+  2. Click the stretch whose long form holds a table: the table is drawn in a frame, and the `«`
+     stands on a row of its own under it.
+  3. Click that `«`: the stretch shrinks back to its short form.
+  4. Click a stretch in a cell: it opens in its cell, and the column widens.
+- **Writes:** nothing.
+- **Gotchas:**
+  - No script in `film/e2e/` drives these yet; they were driven through `startTake`, with Claude
+    Code 2.1.332. A table wider than the pane was seen there once, its cells wrapped in the frame;
+    one written row by row is covered by `tests/cc-stretch.test.tsx` only.
+  - A table's columns are as wide as their widest entries, so while its entries arrive, or a
+    stretch in a cell opens, words already drawn in the table move.
+
 ### A guide on trial
 
 - **Reach:** two sessions started with the `trialGuide` option naming a file, given under

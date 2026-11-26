@@ -6,7 +6,7 @@ import { grow } from '../hooks/grow'
 import { contrastOn } from '../hooks/contrast'
 import { GUIDE, takesTrialGuide } from '../hooks/guide'
 import { DEFAULT_LOOK, lookOf, marksSetting } from '../hooks/look'
-import { asArriving, hrefAt, layout, leadInOf, link, linkAt, namesOf, tint, widthOf, withLeadIns } from '../hooks/layout'
+import { asArriving, hrefAt, layout, leadInOf, link, linkAt, namesOf, tint, widthOf, withCloser, withLeadIns } from '../hooks/layout'
 import { closeAfter, hideLongForms, newStreamState, paragraphsOf, parse, stretches } from '../hooks/parse'
 import type { Stretch } from '../hooks/parse'
 import Reply from '../hooks/reply'
@@ -629,6 +629,127 @@ describe('layout', () => {
       ['code', false, true],
     ])
     expect(rows[1]?.map(run => run.text).join('')).toBe('  let x = {{y}}')
+  })
+
+  describe('a table', () => {
+    const textOfRow = (row: { text: string }[]) => row.map(run => run.text).join('')
+    const drawn = (text: string, width = 80) => layout(text, width).map(textOfRow)
+
+    // The frames below are the ones Claude Code 2.1.332 drew for the same markdown in a paragraph of its own.
+    test('is drawn in a frame, each column as wide as its widest cell, with a rule under every row', async () => {
+      expect(drawn('| Red | Blue | Green |\n|---|---|---|\n| Cat | Dog | Bird |\n| One | Two | Three |')).toEqual([
+        '┌─────┬──────┬───────┐',
+        '│ Red │ Blue │ Green │',
+        '├─────┼──────┼───────┤',
+        '│ Cat │ Dog  │ Bird  │',
+        '├─────┼──────┼───────┤',
+        '│ One │ Two  │ Three │',
+        '└─────┴──────┴───────┘',
+      ])
+    })
+
+    test('centres a header, puts a column to the side its dashes name, and draws the markdown in a cell', async () => {
+      const rows = layout('| Item | Status | Count |\n|---|:---:|---:|\n| `npm test` | **Passed** | 12 |\n| Build step | Pending | 3 |', 80)
+      expect(rows.map(textOfRow)).toEqual([
+        '┌────────────┬─────────┬───────┐',
+        '│    Item    │ Status  │ Count │',
+        '├────────────┼─────────┼───────┤',
+        '│ npm test   │ Passed  │    12 │',
+        '├────────────┼─────────┼───────┤',
+        '│ Build step │ Pending │     3 │',
+        '└────────────┴─────────┴───────┘',
+      ])
+      expect(rows[3]?.find(run => run.text === 'npm test')?.code).toBe(true)
+      expect(rows[3]?.find(run => run.text === 'Passed')?.bold).toBe(true)
+    })
+
+    test('keeps a stretch in a cell pressable where it is drawn', async () => {
+      const rows = layout(`| Cause | Fix |\n|---|---|\n| Cache | ${link('open', 'k', 'Key it by lockfile.')} |`, 80)
+      expect(textOfRow(rows[3] ?? [])).toBe('│ Cache │ Key it by lockfile. │')
+      expect([linkAt(rows, 9, 3), linkAt(rows, 10, 3), linkAt(rows, 28, 3), linkAt(rows, 29, 3)]).toEqual([undefined, { action: 'open', key: 'k' }, { action: 'open', key: 'k' }, undefined])
+    })
+
+    test('a little wider than the region, wraps its cells: a column keeps its widest word, and the room left is shared by what each gave up', async () => {
+      // Claude Code 2.1.332 gives a table four cells fewer than an 80-cell terminal. It starts a
+      // wrapped line of "List items stretch separately" with the space the row broke at; here that space is not drawn.
+      expect(drawn('| Rule | Range | Rate | Change | Moved |\n|---|---|---|---|---|\n| Short form stands alone | All replies | Ninety percent | Up slightly | No words |\n| Long form keeps words | Stretched replies | Eighty percent | Down slightly | Two words |\n| List items stretch separately | List replies | Seventy percent | No change | None moved |', 76)).toEqual([
+        '┌────────────────────┬──────────────┬────────────┬────────────┬─────────┐',
+        '│        Rule        │    Range     │    Rate    │   Change   │  Moved  │',
+        '├────────────────────┼──────────────┼────────────┼────────────┼─────────┤',
+        '│ Short form stands  │ All replies  │ Ninety     │ Up         │ No      │',
+        '│ alone              │              │ percent    │ slightly   │ words   │',
+        '├────────────────────┼──────────────┼────────────┼────────────┼─────────┤',
+        '│ Long form keeps    │ Stretched    │ Eighty     │ Down       │ Two     │',
+        '│ words              │ replies      │ percent    │ slightly   │ words   │',
+        '├────────────────────┼──────────────┼────────────┼────────────┼─────────┤',
+        '│ List items stretch │ List replies │ Seventy    │ No change  │ None    │',
+        '│ separately         │              │ percent    │            │ moved   │',
+        '└────────────────────┴──────────────┴────────────┴────────────┴─────────┘',
+      ])
+    })
+
+    test('stands a shorter cell halfway down a row that wraps, and wraps a cell onto four lines at most', async () => {
+      const guide = '| Topic | Note |\n|---|---|\n| Guide | The guide in hooks/guide.ts is sent with every Claude Code session and asks each reply to answer on its own at its shortest, keeping anything the reader must decide or do outside every single stretch. |'
+      expect(drawn(guide, 76)).toEqual([
+        '┌───────┬──────────────────────────────────────────────────────────────────┐',
+        '│ Topic │                               Note                               │',
+        '├───────┼──────────────────────────────────────────────────────────────────┤',
+        '│       │ The guide in hooks/guide.ts is sent with every Claude Code       │',
+        '│ Guide │ session and asks each reply to answer on its own at its          │',
+        '│       │ shortest, keeping anything the reader must decide or do outside  │',
+        '│       │ every single stretch.                                            │',
+        '└───────┴──────────────────────────────────────────────────────────────────┘',
+      ])
+      // In a region of 50 cells the note would need a fifth line, so the table is written row by row.
+      expect(drawn(guide, 50).slice(0, 2)).toEqual(['Topic: Guide', 'Note: The guide in hooks/guide.ts is sent with'])
+    })
+
+    test('with a cell that would wrap onto a fifth line, is written row by row, each cell after its column’s header', async () => {
+      const rows = layout('| When | What happened |\n|---|---|\n| Morning | The sun rose slowly over the quiet hills behind our small town today. |\n| Night | The stars came out. |', 30)
+      expect(rows.map(textOfRow)).toEqual([
+        'When: Morning',
+        'What happened: The sun rose',
+        '  slowly over the quiet hills',
+        '  behind our small town today.',
+        '─'.repeat(30),
+        'When: Night',
+        'What happened: The stars came',
+        '  out.',
+      ])
+      expect(rows[0]?.[0]).toEqual({ text: 'When:', bold: true })
+    })
+
+    test('without a row of dashes under its first row, or in a code block, is written as typed', async () => {
+      expect(drawn('| a | b |\n| c | d |')).toEqual(['| a | b |', '| c | d |'])
+      expect(drawn('```\n| a | b |\n|---|---|\n```')).toEqual(['  | a | b |', '  |---|---|'])
+    })
+
+    test('reads a pipe written with a backslash as text, and is no table when its dashes are not as many as its header', async () => {
+      expect(drawn('| a \\| b | c |\n|---|---|')).toEqual(['┌───────┬───┐', '│ a | b │ c │', '└───────┴───┘'])
+      expect(drawn('| a | b |\n|---|')).toEqual(['| a | b |', '|---|'])
+      // A row's entry past the header's last column is not drawn, as in GitHub's markdown.
+      expect(drawn('| a |\n|---|\n| b | c |')).toEqual(['┌───┐', '│ a │', '├───┤', '│ b │', '└───┘'])
+    })
+
+    test('ending a long form, leaves its « a row of its own, which a press closes', async () => {
+      const rows = layout(withCloser('More words.\n\n| a | b |\n|---|---|\n| c | d |', link('close', 'k', '«'), '\n'), 40)
+      expect(rows.map(textOfRow)).toEqual(['More words.', '', '┌───┬───┐', '│ a │ b │', '├───┼───┤', '│ c │ d │', '└───┴───┘', '«'])
+      expect(linkAt(rows, 0, 7)).toEqual({ action: 'close', key: 'k' })
+      // In the desktop app's markdown the « is a paragraph of its own, not a cell the table has no column for.
+      expect(withCloser('| a | b |\n|---|---|\n| c | d |', '[«](x)', '\n\n')).toBe('| a | b |\n|---|---|\n| c | d |\n\n[«](x)')
+      expect(withCloser('More words.', '«', '\n')).toBe('More words. «')
+    })
+
+    test('arriving in a growing long form, is a table from the frame its row of dashes shows', async () => {
+      expect(drawn(asArriving('| Rule | Range'))).toEqual(['| Rule | Range'])
+      expect(drawn(asArriving('| Rule | Range |\n|---|---|\n| Today'))).toEqual([
+        '┌───────┬───────┐',
+        '│ Rule  │ Range │',
+        '├───────┼───────┤',
+        '│ Today │       │',
+        '└───────┴───────┘',
+      ])
+    })
   })
 
   describe('italics', () => {
