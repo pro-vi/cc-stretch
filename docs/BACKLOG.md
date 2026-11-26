@@ -520,9 +520,22 @@ out, and each interval taken over sessions:
 
 Sonnet 5.5 had 5 and 2 such sessions, too few to read. What the read leaves open: under Opus a
 long form dropped a word of its short form in more replies, a closing block's stretch aside, by an
-interval that still holds zero, and which stretches those are has not been read. The place of
-`keeps-short-words` in the rule was changed during the trial, after a look at its rates, to leave
-a closing block's stretch out. The reader knew the trial was on, and the judge is a model.
+interval that still holds zero. The place of `keeps-short-words` in the rule was changed during the
+trial, after a look at its rates, to leave a closing block's stretch out. The reader knew the trial
+was on, and the judge is a model.
+
+Those stretches were then read, on one machine's Opus replies: 368 with a stretch under the earlier
+guide and 524 under `series-named`. The rise is in short forms that name a series, which
+`series-named` asks for. Stretches that drop a word and have a series for a short form (a
+semicolon, or two commas) went from 55 to 263; the others from 242 to 303, fewer a reply than
+before. In 72% of such stretches under `series-named` the long form opens with the short form's
+own first three words, against 50% under the earlier guide. In a sample read, it then puts the
+thing itself where the short form had a word that summed it up; an invented example of the kind:
+"two tests and the docs" becomes the tests' file names and the section of the docs. In 14% and 10%
+every word is still in the long form, in another order or with a connective gone where a clause
+became a sentence of its own. Three sessions hold 239 of the 566 such stretches under
+`series-named`, and by session the two guides are close: 46 of 63 sessions with one, against 42 of
+65. Not tried: a line that keeps a part's summing word in the long form.
 
 The table was counted at commit `effa0b7`. From the commit that took the lines up, `bench/live.ts`
 calls the trial's `series-named` sessions `shipped` and the sessions under the earlier guide
@@ -566,9 +579,16 @@ the plugin's guide has since taken up `series-named`'s lines (`label-short-forms
 - A request sent again under a changed guide asked for a tool in 49 of 94, against 9 of 32 under the session's
   own, so the counts under a changed guide rest on fewer replies.
 
-Not known: what the reworded bullet does in live sessions, which takes a trial; whether it changes
-a form already in a session's earlier replies; Fable starts that drop a word, none of which could
-be sent again (`bench/resend.ts`).
+Measured on 2026-11-25 (Fable 5.2 at xhigh effort, Claude Code 2.1.332), in sessions that had
+settled into dropping the gist's words: six requests behind such replies, from four sessions, all
+under the guide with `series-named`'s lines, sent again twice under that guide and twice
+with the bullet reworded (`bench/resend.ts`). 14 of the 24 asked for a tool. Of the replies, the
+closing stretch dropped a word in 4 of 6 under the session's own guide and in 1 of 4 under the
+reworded bullet, where 2 began with the gist's line. One request's two replies under its own guide
+kept the words with no bullet, so a session's form is a habit and not fixed.
+
+Not known: what the reworded bullet does in live sessions, which takes a trial. Ten replies settle
+nothing about a session already under way.
 
 ## desktop-first-request
 
