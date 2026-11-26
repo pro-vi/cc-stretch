@@ -2398,7 +2398,7 @@ describe('the style toolbar', () => {
       plugin: 'cc-stretch',
       surface: 'terminal',
       component: 'AbovePrompt',
-      props: { hasSurvey: false, isWorking: false, maxRows: 10, bodyColumns: 100, scroll: { offset: 0, bodyRows: 30 }, view: {} },
+      props: { hasSurvey: false, isCollapsed: false, isWorking: false, maxRows: 10, bodyColumns: 100, scroll: { offset: 0, bodyRows: 30 }, view: {} },
       viewport: FULLSCREEN,
     })
   const showToolbar = async ($: Engine) => ({ answer: await runStyle($), toolbar: await mountToolbar($) })
