@@ -41,10 +41,22 @@ const QUADS = {
 	'▘': [UL], '▝': [UR], '▖': [LL], '▗': [LR], '▚': [UL, LR], '▞': [UR, LL],
 	'▛': [UL, UR, LL], '▜': [UL, UR, LR], '▙': [UL, LL, LR], '▟': [UR, LL, LR],
 };
+// The box-drawing characters of a table's border, as the arms each has from its cell's middle: up, down, left, right.
+const ARMS = { '─': 'lr', '│': 'ud', '┌': 'dr', '┐': 'dl', '└': 'ur', '┘': 'ul', '├': 'udr', '┤': 'udl', '┬': 'dlr', '┴': 'ulr', '┼': 'udlr' };
+// Each arm as a rectangle of its cell, LINE pixels thick: [x, y, width, height].
+const LINE = 2;
+const ARM = {
+	u: [(CELL_W - LINE) / 2, 0, LINE, (CELL_H + LINE) / 2], d: [(CELL_W - LINE) / 2, (CELL_H - LINE) / 2, LINE, (CELL_H + LINE) / 2],
+	l: [0, (CELL_H - LINE) / 2, (CELL_W + LINE) / 2, LINE], r: [(CELL_W - LINE) / 2, (CELL_H - LINE) / 2, (CELL_W + LINE) / 2, LINE],
+};
 /** Draws a take's frame in the terminal. */
 const drawRows = (frame) => rowsInto($('rows'), frame.rows);
-/** Draws screen rows into `host`, an element of class rows or the terminal's own, unless it already shows them. */
-function rowsInto(host, rows) {
+/**
+ * Draws screen rows into `host`, an element of class rows or the terminal's own, unless it already
+ * shows them. With `isBordered`, the box-drawing characters of a table's border are drawn as lines
+ * that meet from cell to cell, as a terminal draws them, not as glyphs a font leaves gaps between.
+ */
+function rowsInto(host, rows, isBordered = false) {
 	if (host.shownRows === rows) return;
 	host.shownRows = rows;
 	host.innerHTML = '';
@@ -54,11 +66,18 @@ function rowsInto(host, rows) {
 		row.style.top = `${r * CELL_H}px`;
 		for (const run of runs) {
 			// Block characters are cell shapes, as a terminal draws them, not glyphs a font leaves gaps around.
-			if ([...run.text].some((ch) => QUADS[ch] !== undefined)) {
+			if ([...run.text].some((ch) => QUADS[ch] !== undefined || (isBordered && ARMS[ch] !== undefined))) {
 				let col = run.col;
 				for (const ch of run.text) {
 					const quads = QUADS[ch];
-					if (quads !== undefined) {
+					if (isBordered && ARMS[ch] !== undefined) {
+						for (const arm of ARMS[ch]) {
+							const [x, y, w, h] = ARM[arm];
+							const b = document.createElement('i');
+							b.style.cssText = `position:absolute;left:${col * CELL_W + x}px;top:${y}px;width:${w}px;height:${h}px;background:${run.fg ?? 'var(--term-fg)'}`;
+							row.appendChild(b);
+						}
+					} else if (quads !== undefined) {
 						for (const [qx, qy, qw, qh] of quads) {
 							const b = document.createElement('i');
 							b.style.cssText = `position:absolute;left:${(col + qx) * CELL_W}px;top:${qy * CELL_H}px;width:${qw * CELL_W + 1.2}px;height:${qh * CELL_H + 1.2}px;background:${run.fg ?? 'var(--term-fg)'}`;

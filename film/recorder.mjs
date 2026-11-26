@@ -140,22 +140,21 @@ export function openPane({ cols, rows, command, t0, frames = [], debugFile }) {
 }
 
 /**
- * Starts a session with this repo's plugin and begins recording; when `plugin` is false the session
- * loads no plugin from this folder, and runs without the plugin as long as `sources` leaves out the
- * settings that turn on an installed copy. `append` is added to the system prompt, to keep a demo
+ * Starts a session with the plugin in this repo, or in the folder `plugin` names, such as a copy of
+ * an earlier release, and begins recording. `append` is added to the system prompt, to keep a demo
  * session to the feature. The pane is `cols` × `rows` cells, saved in
  * the marks as `size` for film/kit.js to draw; a smaller pane draws larger text in the film. The
  * session reads the project's and local settings only, unless `sources` names others: a take that
  * saves a plugin setting needs `user`, where as of Claude Code 2.1.302 the setting is written. Such a
  * take writes the person's own settings, so they are kept at the start and put back by finish().
  */
-export async function startTake({ out, append, cols = 100, rows = 30, sources = 'project,local', plugin = true }) {
+export async function startTake({ out, append, cols = 100, rows = 30, sources = 'project,local', plugin = REPO }) {
 	const putSettingsBack = sources.split(',').includes('user') ? keepSettings() : () => {};
 	mkdirSync(out, { recursive: true });
 	const pane = openPane({
 		cols, rows,
 		command: ['env', '-u', 'CLAUDE_CODE_CHILD_SESSION', 'CLAUDE_CODE_NO_FLICKER=1',
-			claudePath(), ...(plugin ? ['--plugin-dir', REPO] : []), '--setting-sources', sources, '--model', 'opus', '--append-system-prompt', append],
+			claudePath(), '--plugin-dir', plugin, '--setting-sources', sources, '--model', 'opus', '--append-system-prompt', append],
 	});
 	const { frames, send } = pane;
 	const now = () => (Date.now() - pane.t0) / 1000;

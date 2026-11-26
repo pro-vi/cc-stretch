@@ -72,7 +72,7 @@ const withFress = process.argv.includes('--fress');
 if (release) {
 	await page.goto(`file://${FILM}/release.html`);
 	await page.addScriptTag({ path: `${FILM}/releases/${release}/cut.js` });
-	// The main take is out/…/take; a cut that names others, CUT.takes = ['plain'], has each in take-<name>.
+	// The main take is out/…/take; a cut that names others, CUT.takes = ['table', 'table-before'], has each in take-<name>.
 	const names = await page.evaluate(() => window.CUT.takes ?? []);
 	const takes = Object.fromEntries([['main', readTake(`${OUT}/take`)], ...names.map((name) => [name, readTake(`${OUT}/take-${name}`)])]);
 	await page.evaluate((all) => { window.TAKES = all; window.TAKE = all.main; }, takes);

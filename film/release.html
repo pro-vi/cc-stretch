@@ -23,7 +23,6 @@
 	<div id="ring"></div>
 	<svg id="pointer" viewBox="0 0 24 24"><path d="M3 2 L3 20 L8 15 L11.5 22 L14.5 20.6 L11 13.8 L18 13.8 Z" fill="#fff" stroke="#111" stroke-width="1.6" stroke-linejoin="round"/></svg>
 	<canvas id="clawd" width="14" height="8"></canvas>
-	<div id="bubble"></div>
 	<div id="fade"></div>
 	<div id="grain"></div>
 </div>
@@ -33,7 +32,7 @@
 // travelling to each click and keycaps for each key pressed. The release's cut.js sets window.CUT,
 // whose scenes(take, takes) lists the scenes; compose.mjs injects the cut, then window.TAKE
 // ({ frames, marks }) and window.TAKES, every take by name with the main one as `main`: a cut that
-// sets CUT.takes = ['plain'] also gets the take in out/…/take-plain. Everything on screen is a
+// sets CUT.takes = ['table'] also gets the take in out/…/take-table. Everything on screen is a
 // function of the film's time.
 //
 // A card scene is { kind: 'card', len, html, cls?, clawd?, clicks?, boings?, thuds? }: its html is a
@@ -115,7 +114,6 @@ window.setState = async ({ t }) => {
 	for (const layer of document.querySelectorAll('#stage > .layer')) layer.style.opacity = 0;
 	for (const id of ['fade', 'pointer', 'ring']) show(id, 0);
 	drawClawd(null);
-	bubble('', 0, 0, 0);
 	const scene = SCENES.find((s) => t >= s.a && t < s.b) ?? SCENES.at(-1);
 	if (scene.kind === 'card') cardScene(scene, t);
 	else if (scene.kind === 'custom') scene.draw(t - scene.a, scene);
