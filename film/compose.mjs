@@ -1,6 +1,8 @@
 // Renders a film frame by frame from its page and recorded take, then muxes the music. Without
 // --release it is the launch film, from film.html and out/take; with --release=<version> it is that
-// release's film, from release.html, releases/<version>/cut.js and out/releases/<version>/take.
+// release's film, from release.html, releases/<version>/cut.js and out/releases/<version>/take, with a
+// take-<name> beside it for each take the cut names in CUT.takes, and releases/<version>/music.js for
+// its soundtrack if the release has one.
 //   node film/compose.mjs --stills=1,9,20     one JPEG per time, in out/stills/
 //   node film/compose.mjs --audio             the soundtrack alone, out/soundtrack.wav
 //   node film/compose.mjs --mux               new sound over the frames already rendered
@@ -69,8 +71,11 @@ const page = await browser.newPage({ viewport: { width: 1920, height: 1080 } });
 const withFress = process.argv.includes('--fress');
 if (release) {
 	await page.goto(`file://${FILM}/release.html`);
-	await page.evaluate((take) => { window.TAKE = take; }, readTake(`${OUT}/take`));
 	await page.addScriptTag({ path: `${FILM}/releases/${release}/cut.js` });
+	// The main take is out/…/take; a cut that names others, CUT.takes = ['plain'], has each in take-<name>.
+	const names = await page.evaluate(() => window.CUT.takes ?? []);
+	const takes = Object.fromEntries([['main', readTake(`${OUT}/take`)], ...names.map((name) => [name, readTake(`${OUT}/take-${name}`)])]);
+	await page.evaluate((all) => { window.TAKES = all; window.TAKE = all.main; }, takes);
 } else {
 	execFileSync('npx', ['-y', 'esbuild@0.25', `${FILM}/grow-entry.ts`, '--bundle', '--format=iife', '--global-name=Grow', `--outfile=${OUT}/grow.js`], { stdio: 'ignore' });
 	await page.goto(`file://${FILM}/film.html`);
@@ -93,6 +98,11 @@ if (release) {
 	}
 	await page.evaluate((a) => { window.ARCHIVE = a; }, archive);
 }
+// Every face the page's stylesheets name is loaded before the first frame: as of Playwright 1.62.0's
+// Chromium a face loads when text is first set in it, so a scene that measures text in a face not yet
+// used would measure a fallback font.
+const unloaded = await page.evaluate(async () => (await Promise.all([...document.fonts].map((face) => face.load().then(() => null, () => `${face.weight} ${face.family}`)))).filter(Boolean));
+if (unloaded.length > 0) console.log('faces that did not load, so text measured in them is off:', [...new Set(unloaded)].join(', '));
 const FINAL = `${OUT}/${release ? `cc-stretch-${release}` : withFress ? 'cc-stretch-fress' : 'cc-stretch'}.mp4`;
 await page.evaluate(() => window.setState({ t: 0 }));
 const total = await page.evaluate(() => window.TOTAL);
@@ -105,7 +115,8 @@ async function shoot(t, path) {
 async function soundtrack() {
 	const cues = await page.evaluate(() => ({ total: window.TOTAL, clicks: window.CLICKS, typing: window.TYPING, ...window.CUES }));
 	await page.addScriptTag({ path: `${FILM}/instruments.js` });
-	await page.addScriptTag({ path: `${FILM}/${release ? 'release-music.js' : 'music.js'}` });
+	const ownMusic = release && `${FILM}/releases/${release}/music.js`;
+	await page.addScriptTag({ path: !release ? `${FILM}/music.js` : existsSync(ownMusic) ? ownMusic : `${FILM}/release-music.js` });
 	const wav = await page.evaluate((c) => window.renderMusic(c), cues);
 	writeFileSync(`${OUT}/soundtrack.wav`, Buffer.from(wav, 'base64'));
 }

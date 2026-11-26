@@ -33,13 +33,34 @@ html, body { margin: 0; width: 1920px; height: 1080px; overflow: hidden; backgro
 #term .bar { height: 46px; display: flex; align-items: center; gap: 10px; padding-left: 20px; background: #24221f; }
 #term .bar i { width: 14px; height: 14px; border-radius: 50%; background: #4a4640; display: block; }
 #term .bar span { margin-left: 18px; font: 500 17px/1 var(--sans); color: #8d877d; }
-/* Its width and its rows' size come from setTermSize in kit.js, by the take's size in cells. */
-#rows { position: relative; margin: 14px 18px 18px; font: 400 24px/1 var(--mono); color: var(--term-fg); }
-#rows .row { position: absolute; left: 0; height: 33px; width: 100%; white-space: pre; }
-#rows .row span { position: absolute; top: 4px; }
+/* Screen rows, in the terminal or in a panel a film cuts from it. The terminal's width and its rows'
+   size come from setTermSize in kit.js, by the take's size in cells; whatever draws rows elsewhere
+   sizes them. kit.js names the bar's height and these margins. */
+.rows { position: relative; margin: 14px 18px 18px; font: 400 24px/1 var(--mono); color: var(--term-fg); }
+.rows .row { position: absolute; left: 0; height: 33px; width: 100%; white-space: pre; }
+.rows .row span { position: absolute; top: 4px; }
 #caption { position: absolute; left: 0; right: 0; top: 0; z-index: 5; padding: 52px 0 46px; text-align: center; font: 500 46px/1.2 var(--sans); letter-spacing: -.01em; color: var(--ink);
 	background: linear-gradient(var(--cream) 78%, rgba(244, 241, 234, 0)); }
 #caption small { display: block; margin-top: 10px; font: 400 26px/1.3 var(--sans); color: var(--muted); }
+
+/* A sentence that stretches (stretched, in kit.js): a word keeps its spaces, and one that is arriving
+   or leaving is clipped to the width it has so far. */
+.stretching span { white-space: pre; }
+.stretching span.new, .stretching span.old { display: inline-block; overflow: hidden; vertical-align: bottom; }
+
+/* 1967: typewriter on paper, with the sentence that stretches (its font is TYPED, in kit.js) and the
+   throttle that sets how far. */
+#paper { background: var(--paper); color: var(--sepia); }
+#paper::after { content: ''; position: absolute; inset: 0; background: radial-gradient(ellipse at center, transparent 55%, rgba(80,55,20,.28)); }
+#paper .year { position: absolute; left: 160px; top: 140px; font: 700 34px/1 var(--type); letter-spacing: .18em; }
+#paper .who { position: absolute; left: 160px; top: 192px; font: 400 26px/1 var(--type); opacity: .8; }
+#paper .line { position: absolute; left: 160px; right: 160px; top: 420px; font: 400 54px/1.45 var(--type); }
+#nelson { position: absolute; left: 160px; top: 360px; width: 1460px; color: var(--sepia); }
+#throttle { position: absolute; right: 150px; top: 330px; width: 60px; height: 420px; }
+#throttle .track { position: absolute; left: 26px; top: 0; bottom: 0; width: 8px; background: rgba(74,59,40,.25); border-radius: 4px; }
+#throttle .knob { position: absolute; left: 0; width: 60px; height: 34px; border-radius: 8px; background: var(--sepia); box-shadow: 0 4px 0 rgba(0,0,0,.18); }
+#throttle .label { position: absolute; top: 440px; left: -40px; width: 140px; text-align: center; font: 700 18px/1.2 var(--type); letter-spacing: .2em; }
+#paper .note { position: absolute; left: 160px; bottom: 120px; font: 400 26px/1.4 var(--type); opacity: .8; }
 
 #pointer { position: absolute; left: 0; top: 0; width: 34px; height: 34px; opacity: 0; z-index: 8; }
 #ring { position: absolute; width: 70px; height: 70px; margin: -35px 0 0 -35px; border: 4px solid var(--orange); border-radius: 50%; opacity: 0; z-index: 7; }

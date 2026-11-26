@@ -17,12 +17,13 @@
 	<div id="card" class="layer"></div>
 	<div id="termlayer" class="layer">
 		<div id="caption"></div>
-		<div id="term-wrap"><div id="term"><div class="bar"><i></i><i></i><i></i><span>claude</span></div><div id="rows"></div></div></div>
+		<div id="term-wrap"><div id="term"><div class="bar"><i></i><i></i><i></i><span>claude</span></div><div id="rows" class="rows"></div></div></div>
 	</div>
 	<div id="keys"></div>
 	<div id="ring"></div>
 	<svg id="pointer" viewBox="0 0 24 24"><path d="M3 2 L3 20 L8 15 L11.5 22 L14.5 20.6 L11 13.8 L18 13.8 Z" fill="#fff" stroke="#111" stroke-width="1.6" stroke-linejoin="round"/></svg>
 	<canvas id="clawd" width="14" height="8"></canvas>
+	<div id="bubble"></div>
 	<div id="fade"></div>
 	<div id="grain"></div>
 </div>
@@ -30,22 +31,29 @@
 <script>
 // A release film: cards, and scenes cut from its recorded take, each with its caption, the pointer
 // travelling to each click and keycaps for each key pressed. The release's cut.js sets window.CUT,
-// whose scenes(take) lists the scenes; compose.mjs injects window.TAKE ({ frames, marks }) and the
-// cut before the first frame. Everything on screen is a function of the film's time.
+// whose scenes(take, takes) lists the scenes; compose.mjs injects the cut, then window.TAKE
+// ({ frames, marks }) and window.TAKES, every take by name with the main one as `main`: a cut that
+// sets CUT.takes = ['plain'] also gets the take in out/…/take-plain. Everything on screen is a
+// function of the film's time.
 //
 // A card scene is { kind: 'card', len, html, cls?, clawd?, clicks?, boings?, thuds? }: its html is a
 // string or a function of the seconds into the scene, each click ({ at, x, y }) lands that many
 // seconds into it at that pixel, and each boing (a spring let go) or thud (a landing) sounds that many
 // seconds into it. A take scene is { kind: 'take', len, from, to, caption, small?, focus, zoom?,
-// growth?, click?, keys? }: it plays take seconds `from` to `to` (a growth plays each captured screen
-// evenly first), and a click ({ row, col }) or keys (['⌥', '↓']) land as it ends.
+// growth?, click?, keys?, cutIn? }: it plays take seconds `from` to `to` (a growth plays each captured
+// screen evenly first), a click ({ row, col }) or keys (['⌥', '↓']) land as it ends, and it fades
+// from and to cream beside a scene of another kind, unless cutIn says it starts on a cut. A custom
+// scene is { kind: 'custom', len, draw }: draw(seconds into the scene, scene) shows the layers it
+// needs, every layer of the stage being hidden before each frame, and does its own fading; it gets
+// no pointer. Any scene may carry cues, { name: [seconds into the scene] }, which reach the release's
+// own music.js as CUES.named[name], in the film's seconds.
 let SCENES = null;
 function build() {
 	// A take recorded at another size than 100 × 30 says so in its marks.
 	const size = window.TAKE.marks.size;
 	if (size) setTermSize(size.cols, size.rows);
 	let at = 0;
-	SCENES = window.CUT.scenes(window.TAKE).map((scene) => {
+	SCENES = window.CUT.scenes(window.TAKE, window.TAKES).map((scene) => {
 		const placed = { ...scene, a: at, b: at + scene.len };
 		at += scene.len;
 		return placed;
@@ -58,7 +66,9 @@ function build() {
 		keys: SCENES.filter((s) => s.keys).map((s) => ({ at: s.b, count: s.keys.length })),
 		boings: SCENES.flatMap((s) => (s.boings ?? []).map((at) => s.a + at)),
 		thuds: SCENES.flatMap((s) => (s.thuds ?? []).map((at) => s.a + at)),
+		named: {},
 	};
+	for (const s of SCENES) for (const [name, times] of Object.entries(s.cues ?? {})) (window.CUES.named[name] ??= []).push(...times.map((at) => s.a + at));
 }
 
 function cardScene(scene, t) {
@@ -81,10 +91,10 @@ function takeScene(scene, t) {
 	const before = joinsBefore ? SCENES[i - 1] : scene;
 	const blend = ease(span(t, scene.a, scene.a + 0.6));
 	const cam = placeTerm(lerp(before.zoom ?? 1.3, scene.zoom ?? 1.3, blend), lerp(before.focus, scene.focus, blend));
-	$('caption').innerHTML = `${scene.caption}<small>${scene.small || '&nbsp;'}</small>`;
-	$('caption').style.opacity = 1;
+	$('term-wrap').style.opacity = 1;
+	setCaption(scene.caption, scene.small);
 	pointTo(SCENES.filter((s) => s.click).map((s) => ({ at: s.b, ...cellToScreen(cam, s.click.row, s.click.col) })), t);
-	show('fade', (joinsBefore ? 0 : 1 - span(t, scene.a, scene.a + 0.35)) + (joinsAfter ? 0 : span(t, scene.b - 0.35, scene.b)));
+	show('fade', (joinsBefore || scene.cutIn ? 0 : 1 - span(t, scene.a, scene.a + 0.35)) + (joinsAfter ? 0 : span(t, scene.b - 0.35, scene.b)));
 }
 
 /** Keycaps rise 0.6 s before their scene ends, go down as it ends, and leave 1 s later. */
@@ -92,7 +102,7 @@ function keycaps(t) {
 	const scene = SCENES.find((s) => s.keys && t > s.b - 0.6 && t < s.b + 1.0);
 	if (!scene) { show('keys', 0); return; }
 	const html = scene.keys.map((key) => `<div class="key${t >= scene.b && t < scene.b + 0.18 ? ' down' : ''}">${key}</div>`).join('');
-	if ($('keys').dataset.html !== html) { $('keys').dataset.html = html; $('keys').innerHTML = html; }
+	setHtml($('keys'), html);
 	const rise = ease(span(t, scene.b - 0.6, scene.b - 0.35));
 	$('keys').style.opacity = rise * (1 - span(t, scene.b + 0.7, scene.b + 1.0));
 	$('keys').style.transform = `translateY(${lerp(30, 0, rise)}px)`;
@@ -100,10 +110,14 @@ function keycaps(t) {
 
 window.setState = async ({ t }) => {
 	if (!SCENES) build();
-	for (const id of ['card', 'termlayer']) show(id, 0);
+	// Every layer, a cut's own included, is hidden until the frame's scene shows the ones it draws in.
+	for (const layer of document.querySelectorAll('#stage > .layer')) layer.style.opacity = 0;
+	for (const id of ['fade', 'pointer', 'ring']) show(id, 0);
 	drawClawd(null);
+	bubble('', 0, 0, 0);
 	const scene = SCENES.find((s) => t >= s.a && t < s.b) ?? SCENES.at(-1);
 	if (scene.kind === 'card') cardScene(scene, t);
+	else if (scene.kind === 'custom') scene.draw(t - scene.a, scene);
 	else takeScene(scene, t);
 	keycaps(t);
 	await endFrame();

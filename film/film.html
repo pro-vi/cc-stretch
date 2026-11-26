@@ -11,22 +11,6 @@
 	#card .reply i b { position: absolute; top: 0; bottom: 0; border-radius: 6px; background: var(--link); }
 	#card .claim { text-align: left; max-width: 760px; }
 	#card .claim .small { max-width: 640px; }
-	/* 1967: typewriter on paper. */
-	#paper { background: var(--paper); color: var(--sepia); }
-	#paper::after { content: ''; position: absolute; inset: 0; background: radial-gradient(ellipse at center, transparent 55%, rgba(80,55,20,.28)); }
-	#paper .year { position: absolute; left: 160px; top: 140px; font: 700 34px/1 var(--type); letter-spacing: .18em; }
-	#paper .who { position: absolute; left: 160px; top: 192px; font: 400 26px/1 var(--type); opacity: .8; }
-	#paper .line { position: absolute; left: 160px; right: 160px; top: 420px; font: 400 54px/1.45 var(--type); }
-	#nelson, #measure { position: absolute; left: 160px; top: 360px; width: 1460px; font: 400 58px/1.5 var(--type); color: var(--sepia); }
-	#nelson span { white-space: pre; }
-	#nelson span.new, #nelson span.old { display: inline-block; overflow: hidden; vertical-align: bottom; }
-	#nelson span.new { font-weight: 700; }
-	#measure { visibility: hidden; top: 0; white-space: pre; }
-	#throttle { position: absolute; right: 150px; top: 330px; width: 60px; height: 420px; }
-	#throttle .track { position: absolute; left: 26px; top: 0; bottom: 0; width: 8px; background: rgba(74,59,40,.25); border-radius: 4px; }
-	#throttle .knob { position: absolute; left: 0; width: 60px; height: 34px; border-radius: 8px; background: var(--sepia); box-shadow: 0 4px 0 rgba(0,0,0,.18); }
-	#throttle .label { position: absolute; top: 440px; left: -40px; width: 140px; text-align: center; font: 700 18px/1.2 var(--type); letter-spacing: .2em; }
-	#paper .note { position: absolute; left: 160px; bottom: 120px; font: 400 26px/1.4 var(--type); opacity: .8; }
 
 	/* Archive: photographs and film from Brown University, graded and slowly pushed in. */
 	#archive { background: #0d0c0a; }
@@ -43,11 +27,11 @@
 <div id="stage">
 	<div id="card" class="layer"></div>
 	<div id="archive" class="layer"><img id="arcA" alt=""><img id="arcB" alt=""><div class="over"><div class="big"></div><div class="small"></div></div><div class="credit"></div></div>
-	<div id="paper" class="layer"><img class="portrait" alt=""><div class="portrait-credit"></div><div class="year"></div><div class="who"></div><div class="line"></div><div id="measure"></div><div id="nelson"></div>
+	<div id="paper" class="layer"><img class="portrait" alt=""><div class="portrait-credit"></div><div class="year"></div><div class="who"></div><div class="line"></div><div id="nelson" class="stretching"></div>
 		<div id="throttle"><div class="track"></div><div class="knob"></div><div class="label">THROTTLE</div></div><div class="note"></div></div>
 	<div id="termlayer" class="layer">
 		<div id="caption"></div>
-		<div id="term-wrap"><div id="term"><div class="bar"><i></i><i></i><i></i><span>claude</span></div><div id="rows"></div></div></div>
+		<div id="term-wrap"><div id="term"><div class="bar"><i></i><i></i><i></i><span>claude</span></div><div id="rows" class="rows"></div></div></div>
 	</div>
 	<div id="ring"></div>
 	<svg id="pointer" viewBox="0 0 24 24"><path d="M3 2 L3 20 L8 15 L11.5 22 L14.5 20.6 L11 13.8 L18 13.8 Z" fill="#fff" stroke="#111" stroke-width="1.6" stroke-linejoin="round"/></svg>
@@ -205,57 +189,10 @@ function turn(t) {
 	$('archive').querySelector('.credit').textContent = t < 1.6 || !A.fress ? COPY.archiveCredit : COPY.fressCredit;
 	show('fade', 1 - span(t, 0, 0.5) + span(t, 2.6, 3));
 }
-// Nelson's own sentences, stretched the way his 1970 article describes: "Gaps appear between
-// phrases; new words and phrases pop into the gaps, an item at a time." The sentence stays real
-// flowing text: each new word, set heavier as in Dream Machines, opens from no width to its own,
-// so the browser reflows the line every frame and the words already there are pushed along.
-const bareWord = (w) => w.replace(/^[^\p{L}\p{N}]+|[^\p{L}\p{N}]+$/gu, '').toLowerCase();
-const PLANS = new Map();
-/** The words of both sentences in reading order: kept (anchor), new (long only) or old (short only). */
-function planOf(short, long) {
-	if (PLANS.has(long)) return PLANS.get(long);
-	const units = (text) => text.match(/\S+\s*/g) ?? [];
-	const S = units(short), L = units(long);
-	const a = S.map(bareWord), b = L.map(bareWord);
-	const n = Array.from({ length: a.length + 1 }, () => new Array(b.length + 1).fill(0));
-	for (let i = a.length - 1; i >= 0; i--) for (let j = b.length - 1; j >= 0; j--) n[i][j] = a[i] === b[j] ? n[i + 1][j + 1] + 1 : Math.max(n[i + 1][j], n[i][j + 1]);
-	const plan = [];
-	let i = 0, j = 0;
-	while (i < a.length || j < b.length) {
-		if (i < a.length && j < b.length && a[i] === b[j]) { plan.push({ kind: 'kept', text: L[j] }); i++; j++; }
-		else if (j < b.length && (i >= a.length || n[i][j + 1] >= n[i + 1][j])) { plan.push({ kind: 'new', text: L[j] }); j++; }
-		else { plan.push({ kind: 'old', text: S[i] }); i++; }
-	}
-	// A new word's turn: 1 beside a kept word, more the further it sits from every kept word.
-	plan.forEach((u, k) => {
-		if (u.kind !== 'new') return;
-		let d = 1;
-		while (plan[k - d]?.kind !== 'kept' && plan[k + d]?.kind !== 'kept' && (k - d >= 0 || k + d < plan.length)) d++;
-		u.turn = d;
-	});
-	const m = $('measure');
-	for (const u of plan) {
-		const el = document.createElement('span');
-		el.textContent = u.text;
-		el.style.fontWeight = u.kind === 'new' ? '700' : '400';
-		m.appendChild(el);
-		u.width = el.getBoundingClientRect().width;
-		m.removeChild(el);
-	}
-	PLANS.set(long, plan);
-	return plan;
-}
+// Nelson's own sentences, stretched as kit.js stretches a sentence, in the typewriter face.
 function drawStretch1967(short, long, p) {
-	const host = $('nelson');
-	if (p <= 0) { host.textContent = short; return; }
-	const plan = planOf(short, long);
-	const last = Math.max(1, ...plan.map((u) => u.turn ?? 0));
-	host.innerHTML = plan.map((u) => {
-		if (u.kind === 'kept') return `<span class="kept">${u.text}</span>`;
-		const q = u.kind === 'old' ? 1 - ease(clamp(p / 0.3)) : ease(clamp((p - 0.6 * ((u.turn - 1) / last)) / 0.4));
-		if (q <= 0) return '';
-		return `<span class="${u.kind === 'new' ? 'new' : 'old'}" style="width:${(u.width * q).toFixed(2)}px;opacity:${q.toFixed(3)}">${u.text}</span>`;
-	}).join('');
+	$('nelson').style.font = TYPED;
+	$('nelson').innerHTML = stretched([short, long], p, TYPED, TYPED_NEW);
 }
 /** How far Nelson's sentence has stretched at scene time t: [short, long, progress]. */
 function nelsonAt(t) {
@@ -282,14 +219,13 @@ function nelson(t) {
 function nelsonPops() {
 	const pops = [];
 	for (const [short, long, t0, t1] of [[...COPY.nelson[0], 0.8, 2.7], [...COPY.nelson[1], 4.4, 6.1]]) {
-		const plan = planOf(short, long);
-		const last = Math.max(1, ...plan.map((u) => u.turn ?? 0));
+		const plan = planOf([short, long], TYPED, TYPED_NEW);
 		const seen = new Set();
 		for (let t = t0; t <= t1; t += 1 / 120) {
 			const p = span(t, t0, t1);
 			plan.forEach((u, k) => {
 				if (u.kind !== 'new' || seen.has(k)) return;
-				if (ease(clamp((p - 0.6 * ((u.turn - 1) / last)) / 0.4)) >= 0.5) { seen.add(k); pops.push(8 + t); }
+				if (openAt(u, p) >= 0.5) { seen.add(k); pops.push(8 + t); }
 			});
 		}
 	}
