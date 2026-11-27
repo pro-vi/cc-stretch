@@ -1,7 +1,9 @@
 // The instruments every film's soundtrack is played on: a soft FM electric piano, pads, a music-box
 // bell, a sub, ticks for clicks and runs of typing, a brown switch for a single key, a boing for a
 // spring let go, a thud for a landing, and a chiptune square, through one compressor and room, with
-// the phrases more than one film plays on them.
+// the phrases more than one film plays on them. A film's own score may build further instruments on
+// what arrange is handed: the context, the master, bus (a channel into the master with a send to the
+// room), hz and noise.
 // window.playFilm(total, arrange) builds them for `total` seconds, lets `arrange` place the notes, renders
 // offline, and resolves a 16-bit stereo WAV as base64.
 window.playFilm = async (total, arrange) => {
@@ -187,7 +189,7 @@ window.playFilm = async (total, arrange) => {
 	const bellPair = (at) => { bell(at + 0.3, 81, 0.04); bell(at + 0.6, 85, 0.035); };
 	/** Clawd's two-note chirp. */
 	const chirp = (at) => { square(at, 84, 0.08); square(at + 0.12, 91, 0.12); };
-	arrange({ ctx, master, BEAT, ep, bell, pad, tick, brownSwitch, square, boing, thud, CHORDS, TONIC, walk, clickTicks, held, bellPair, chirp });
+	arrange({ ctx, master, bus, hz, noise, BEAT, ep, bell, pad, tick, brownSwitch, square, boing, thud, CHORDS, TONIC, walk, clickTicks, held, bellPair, chirp });
 
 	const rendered = await ctx.startRendering();
 	const n = rendered.length, bytes = new DataView(new ArrayBuffer(44 + n * 4));

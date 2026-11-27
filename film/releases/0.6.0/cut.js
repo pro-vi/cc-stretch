@@ -1,16 +1,35 @@
-// The 0.6.0 film, for people who know the plugin from its launch film: what this release changed.
-// A title, then three changes, each on screen: phrases that say their point before a click, on a
-// card and in a reply that explains the plugin; an opening that starts from what was on screen, as
-// two phrases of that reply open and one closes; and a table in a stretch, as release 0.5.6 drew it
-// and as it is drawn now. Claude is asked which parts were skipped between the second change and
-// the third, the style toolbar then tries other marks, and the end card gives the install and
-// update commands. compose.mjs --release=0.6.0 loads it into release.html with take.mjs's three takes.
+// The 0.6.0 film: what cc-stretch is, for people who have never seen it, and then what this release
+// changed, for people who have. Two takes ask what cc-stretch is, so the replies on screen explain
+// it. The film opens on the reply written without the plugin, pulls back to show all of it, sets the
+// reply written with the plugin beside it at the same scale, and moves in on that one: two phrases
+// opened, one closed, Claude asked which parts were skipped, and the style toolbar's other marks.
+// Then a title, and the two changes that show on a screen: phrases that say their point before a
+// click, on a card, and a table in a stretch, as release 0.5.6 drew it and as it is drawn now. That
+// table's rows name every change. The end card gives the install and update commands.
+// compose.mjs --release=0.6.0 loads it into release.html with take.mjs's four takes.
 (() => {
 	const COPY = {
+		asked: 'You asked one question.',
+		writing: (n) => `Claude has written <b>${n}</b> words…`,
+		answered: (n) => `Claude answered in ${n} words.`,
+		answeredSmall: 'This is all of it, top to bottom.',
+		same: 'Same question, with cc-stretch.',
+		sameSmall: (n) => `${n} words. Each highlighted phrase holds more.`,
+		without: 'without the plugin',
+		with: 'with cc-stretch',
+		words: 'words',
+		click: 'Click a phrase. It grows right where it is.',
+		clickSmall: 'The new words arrive in colour.',
+		between: 'The detail grows between the words you read.',
+		betweenSmall: 'Open only what you need.',
+		fold: 'Click « and it folds back.',
+		knows: 'And Claude knows which parts you opened.',
+		knowsSmall: 'Ask it what you skipped.',
+		style: 'Mark the phrases your way.',
+		styleSmall: '/cc-stretch:style puts a toolbar above the prompt.',
 		kicker: 'What’s new in',
 		title: 'cc-stretch 0.6.0',
-		titleSmall: 'Three changes you can see.',
-		newKicker: 'New in 0.6.0 · 1 of 3',
+		newKicker: 'New in 0.6.0',
 		named: 'Phrases now say something before you click.',
 		beforeBadge: 'Before',
 		afterBadge: 'Now',
@@ -19,21 +38,10 @@
 		before: 'Sometimes only a label',
 		after: 'The point itself, in a few words',
 		trial: 'Over two weeks of real sessions, half on each guide, with a model judging every phrase in view:<br>phrases that were only a label fell from 11% to 3% with Opus 5.5, and from 11% to 1% with Fable 5.2.',
-		said: 'Each phrase here already says its point.',
-		saidSmall: '1 of 3 · click one for the rest',
-		steady: 'An opening starts from exactly what you read.',
-		steadySmall: '2 of 3 · nothing after it jumps as the click lands',
-		between: 'The detail grows between the words you read.',
-		betweenSmall: 'Open only what you need.',
-		fold: 'Click « and it folds back.',
-		knows: 'And Claude knows which parts you opened.',
-		knowsSmall: 'Ask it what you skipped.',
 		table: 'A table in a stretch is drawn as a table.',
-		tableSmall: '3 of 3 · the same reply under each release',
+		tableSmall: 'The same reply under each release. Its rows are what 0.6.0 changed.',
 		versions: ['0.5.6', '0.6.0'],
 		drew: ['wrote it as typed', 'draws the table'],
-		style: 'Since 0.5.0: mark the phrases your way.',
-		styleSmall: '/cc-stretch:style puts a toolbar above the prompt.',
 		product: 'cc-stretch',
 		tagline: ['Short replies that stretch where you click.', 'Short replies from Claude that stretch to the full answer where you click.'],
 		install: '/plugin install cc-stretch --marketplace pro-vi/cc-stretch',
@@ -42,6 +50,10 @@
 		repo: 'github.com/pro-vi/cc-stretch',
 		fine: 'Clawd belongs to Anthropic. Stretchtext belongs to Ted Nelson. The bugs are ours.',
 	};
+
+	// The score's beat, in seconds: a hundred to the minute, four to a bar. Every scene lasts a whole
+	// number of beats, or of half beats, and every click lands on a beat, where music.js plays its note.
+	const BEAT = 0.6;
 
 	// --- what the takes hold ---------------------------------------------------------------------
 	const rowText = (runs) => runs.reduce((out, run) => out.padEnd(run.col, ' ') + run.text, '');
@@ -58,10 +70,11 @@
 	}
 	/**
 	 * A frame's first question and the reply under it: the rows from the question to the reply's last
-	 * filled row so far, and the row where the reply's own text begins. A command the take ran before
-	 * it, which starts with a slash, is no question. As of Claude Code 2.1.332 a finished turn ends
-	 * with a line that times it (`· done`), and while a reply is being written a spinner sits in the
-	 * screen's last eight rows, above the prompt; the reply ends above whichever is there.
+	 * filled row so far, the row where the reply's own text begins, and how many words the reply holds.
+	 * A command the take ran before it, which starts with a slash, is no question. As of Claude Code
+	 * 2.1.332 a finished turn ends with a line that times it (`· done`), and while a reply is being
+	 * written a spinner sits in the screen's last eight rows, above the prompt; the reply ends above
+	 * whichever is there.
 	 */
 	function replyOf(frame) {
 		if (frame.reply) return frame.reply;
@@ -71,20 +84,30 @@
 		let to = (done === -1 ? texts.length - 8 : done) - 1;
 		while (to > from && texts[to].trim() === '') to--;
 		const first = texts.findIndex((text, i) => i > from && i <= to && text.startsWith('⏺'));
-		return (frame.reply = { from, to, first, rows: frame.rows.slice(from, to + 1) });
+		const said = first === -1 ? '' : texts.slice(first, to + 1).join(' ').replace(/⏺/g, ' ');
+		// A word holds a letter or a digit; a list's own numbering is not counted.
+		const words = said.split(/\s+/).filter((w) => /[\p{L}\p{N}]/u.test(w) && !/^\d+[.)]$/.test(w)).length;
+		return (frame.reply = { from, to, first, rows: frame.rows.slice(from, to + 1), words });
 	}
+	/** The reply the plugin's session gave, as it stood before any click. */
+	const shortReply = (main) => replyOf(frameAt(main.marks.replied.t + 0.3, main));
 
 	// --- what this film draws beside the terminal ------------------------------------------------
-	// A panel is rows cut from a screen, with the terminal's own margins: a reply's last paragraphs,
-	// the style toolbar's rows, or a reply from a take of another width. The film has two, for the
-	// scenes that set two things side by side or one above the other; the tables scene puts a tag
-	// over each.
+	// A panel is rows cut from a screen, with the terminal's own margins, so a panel at the terminal's
+	// scale and place covers the same rows exactly: a reply from the question's row on, its last
+	// paragraphs, the style toolbar's rows, or a reply from a take of another width. The film has two,
+	// for the scenes that set two things side by side or one above the other, and a tag for each: a
+	// large word and a few small ones, or as a count the number over its words.
 	const CSS = `
 		#panels { z-index: 2; }
 		.panel { position: absolute; left: 0; top: 0; transform-origin: 0 0; background: var(--term); border-radius: 18px; overflow: hidden;
 			box-shadow: 0 30px 80px rgba(30,20,10,.28), 0 0 0 1px rgba(0,0,0,.4); }
 		.tag { position: absolute; left: 0; top: 0; font: 400 30px/1 var(--sans); color: var(--muted); white-space: nowrap; }
-		.tag b { margin-right: 20px; font: 400 68px/1 var(--serif); letter-spacing: -.015em; color: var(--ink); }`;
+		.tag b { margin-right: 20px; font: 400 68px/1 var(--serif); letter-spacing: -.015em; color: var(--ink); }
+		.tag.count { width: 420px; line-height: 1.3; white-space: normal; }
+		.tag.count b { display: block; margin: 0; font-size: 96px; line-height: 1.05; }
+		.tag.right { text-align: right; }
+		#caption small b { font-weight: 600; color: var(--ink); font-variant-numeric: tabular-nums; }`;
 	let dom = null;
 	function buildDom() {
 		const style = document.createElement('style');
@@ -109,22 +132,82 @@
 		panel.style.opacity = alpha;
 		panel.style.transform = `translate(${x.toFixed(2)}px, ${y.toFixed(2)}px) scale(${s.toFixed(4)})`;
 	}
-	/** A panel's tag: a large word and a few small ones after it. */
-	function tag(el, x, y, big, small, alpha) {
+	/** A panel's tag, in the classes `as` names besides its own. */
+	function tag(el, x, y, big, small, alpha, as = '') {
+		el.className = `tag ${as}`;
 		setHtml(el, `<b>${big}</b>${small}`);
 		el.style.opacity = alpha;
 		el.style.transform = `translate(${x}px, ${y}px)`;
 	}
 
-	// The framing of the reply in the terminal: the question's row under the caption and the whole reply
-	// in view. The command that opened the style toolbar stands above the question.
+	// --- the opening: one reply without the plugin, then the same question with it ------------------
+	// When each part of the opening ends: the question alone, the reply being written, the pull back
+	// to the whole of it, the two replies side by side, and the move in on the short one. The short
+	// reply arrives on a beat, ARRIVES, and the pull back takes PULL seconds.
+	const ALONE = BEAT, WRITTEN = 6 * BEAT, WHOLE = 9 * BEAT, ARRIVES = 10 * BEAT, BESIDE = 14 * BEAT, INTRO = 16 * BEAT, PULL = 1.3;
+	// The scale the reply is read at as it is written, and where its newest row and its top are held.
+	const READ = 1.5, EDGE = 905, TOP = 232;
+	// The band the two whole replies stand in, side by side at one scale: the scale that fits the long
+	// one into the band, or MOST if that is smaller, which leaves room beside them for the counts.
+	const WHOLE_TOP = 222, WHOLE_FOOT = 1042, MOST = 0.5, GAP = 60;
+	// The first take scene's framing, which the opening ends on: the question's row under the caption
+	// and the whole reply in view. The command that opened the style toolbar stands above the question.
 	const FIRST = { s: 1.3, focus: 19 };
 
+	function intro({ main, plain }) {
+		const long = replyOf(frameAt(plain.marks.end.t, plain)), short = shortReply(main);
+		// The take seconds the writing spans: from just before the reply's first row to its last.
+		const begun = plain.frames.find((f) => f.t > plain.marks.asked.t && replyOf(f).words > 0).t - 0.15;
+		const ended = plain.frames.find((f) => replyOf(f).words === long.words).t + 0.1;
+		const takeAt = (t) => lerp(begun, ended, span(t, ALONE, WRITTEN) ** 1.15);
+		const lastRow = (t) => replyOf(frameAt(takeAt(t), plain)).rows.length - 1;
+		// The newest row's place eased over the last 0.3 s, so the reply glides up as rows arrive.
+		const smoothRow = (t) => { let sum = 0; for (let k = 0; k < 8; k++) sum += lastRow(t - (k * 0.3) / 8); return sum / 8; };
+		const fullH = panelHeight(long.rows.length), fitS = Math.min(MOST, (WHOLE_FOOT - WHOLE_TOP) / fullH);
+		const top = (WHOLE_TOP + WHOLE_FOOT - fullH * fitS) / 2, wide = TERM_W * fitS;
+		const longX = (W - 2 * wide - GAP) / 2, shortX = longX + wide + GAP;
+		const [longPanel, shortPanel] = dom.panels;
+
+		const draw = (t) => {
+			show('termlayer', 1);
+			show('panels', 1);
+			// The reply as far as it is written, and where it is read, which hold until the pull back is over.
+			const moving = t < WRITTEN + PULL, reply = moving ? replyOf(frameAt(takeAt(t), plain)) : long;
+			// While it is written, the panel hangs from the frame's top until its newest row reaches the
+			// edge, then rises to keep that row there. The pull back turns about the reply's foot.
+			const readY = moving ? Math.min(TOP, EDGE - (PAD_TOP + (smoothRow(t) + 1) * CELL_H) * READ) : 0;
+			const back = ease(span(t, WRITTEN, WRITTEN + PULL));
+			const s = READ * (fitS / READ) ** back;
+			const footY = lerp(readY + fullH * READ, top + fullH * fitS, back);
+			const aside = ease(span(t, WHOLE, WHOLE + 0.8)), leave = ease(span(t, BESIDE, BESIDE + 0.7));
+			const centreX = lerp(lerp(W / 2, longX + wide / 2, aside), -400, leave);
+			place(longPanel, t < WRITTEN ? reply.rows : long.rows, { x: centreX - (TERM_W * s) / 2, y: t < WRITTEN ? readY : footY - fullH * s, s, alpha: 1 - leave });
+			// The short reply arrives beside it at the same scale, then grows to the place the terminal
+			// takes in the next scene, where the terminal itself fades in under it.
+			drawRows(frameAt(main.marks.replied.t + 0.3, main));
+			const cam = placeTerm(zoomFor(FIRST.s), FIRST.focus);
+			const grow = ease(span(t, BESIDE, INTRO - 0.15));
+			const at = { x: lerp(shortX, cam.x, grow), y: lerp(top, cam.y + (BAR + short.from * CELL_H) * cam.s, grow), s: fitS * (cam.s / fitS) ** grow };
+			place(shortPanel, short.rows, { ...at, alpha: ease(span(t, ARRIVES - 0.2, ARRIVES + 0.2)) });
+			$('term-wrap').style.opacity = span(t, INTRO - 0.45, INTRO - 0.1);
+
+			const counts = ease(span(t, ARRIVES + 0.3, ARRIVES + 0.7)) * (1 - span(t, BESIDE - 0.1, BESIDE + 0.25));
+			tag(dom.tags[0], longX - 460, top + 10, long.words, `${COPY.words}<br>${COPY.without}`, counts, 'count right');
+			tag(dom.tags[1], shortX + wide + 40, top + 10, short.words, `${COPY.words}<br>${COPY.with}`, counts, 'count');
+
+			if (t < WRITTEN) setCaption(COPY.asked, reply.words > 0 ? COPY.writing(reply.words) : '');
+			else if (t < ARRIVES - 0.1) setCaption(COPY.answered(long.words), COPY.answeredSmall);
+			else setCaption(COPY.same, COPY.sameSmall(short.words));
+		};
+		return { kind: 'custom', len: INTRO, draw, cues: { opening: [0], written: [ALONE, WRITTEN], arrives: [ARRIVES], pickup: [BESIDE] } };
+	}
+
 	// --- other marks for the phrases ------------------------------------------------------------------
-	// The take's clicks on the style toolbar, in order, a beat of the score apart. The take is recorded
-	// in the tinted highlight with no marks, where these clicks end again.
+	// The take's clicks on the style toolbar, in order, a beat apart: the score's tune for these bars,
+	// a note to a click. The take is recorded in the tinted highlight with no marks, where these clicks
+	// end again.
 	const LOOKS = ['colour', 'swatch', 'underline', 'none', 'bold', 'tinted', 'unbold', 'bare'];
-	const BEAT = 0.625, LEAD = 2 * BEAT, STYLE = LEAD + LOOKS.length * BEAT + 1.0;
+	const LEAD = 3 * BEAT, STYLE = 12 * BEAT;
 	// The scale of the scene's two panels, where the upper one's top stands, the gap between them, and
 	// the toolbar's rows: its marks and its highlights.
 	const STYLE_S = 1.25, STYLE_TOP = 208, STYLE_GAP = 18, TOOLBAR_ROWS = 2;
@@ -156,12 +239,13 @@
 			pointTo(clicks, t);
 			show('fade', 1 - span(t, 0, 0.35) + span(t, STYLE - 0.35, STYLE));
 		};
-		return { kind: 'custom', len: STYLE, draw, clicks, cues: { looks: clicks.map((c) => c.at) } };
+		return { kind: 'custom', len: STYLE, draw, clicks, cues: { styles: [0], looks: clicks.map((c) => c.at) } };
 	}
 
 	// --- a table in a stretch, as release 0.5.6 drew it and as it is drawn now -------------------------
-	// When each take's stretch is clicked, on beats of the score, and the scene's length, twelve beats.
-	const PRESSED = [2 * BEAT, 6 * BEAT], TABLES = 12 * BEAT;
+	// When each take's stretch is clicked, the third beat of the scene's first two bars, and the scene's
+	// length, four bars: the last two leave the table to be read.
+	const PRESSED = [2 * BEAT, 6 * BEAT], TABLES = 16 * BEAT;
 	// The scale of the two panels, where their tops stand, and the gap between them.
 	const TABLE_S = 0.98, TABLE_TOP = 430, TABLE_GAP = 56;
 	function tables({ 'table-before': before, table: now }) {
@@ -194,12 +278,14 @@
 			pointTo(clicks, t);
 			show('fade', 1 - span(t, 0, 0.35) + span(t, TABLES - 0.35, TABLES));
 		};
-		return { kind: 'custom', len: TABLES, draw, clicks, cues: { tabled: clicks.map((click) => click.at) } };
+		return { kind: 'custom', len: TABLES, draw, clicks, cues: { tables: [0], asTyped: [PRESSED[0]], drawn: [PRESSED[1]] } };
 	}
 
 	// --- the first change, on a card: phrases that say their point --------------------------------
 	// Two small panels, each one item of a reply's list as a closed stretch on its highlight: on the
 	// left a short form that only announces its point, on the right the take's own, which states it.
+	// The left one arrives on the card's second beat, the right one on its second bar.
+	const CARD = 12 * BEAT, BEFORE = BEAT, NOW = 4 * BEAT;
 	const PW = 800, PH = 230, LEFT = { x: 130, y: 470 }, RIGHT = { x: 990, y: 470 };
 	// The closed stretch of the first reply that the card shows: the one about its cost, whose words
 	// come from the facts in take.mjs's added instructions. It must sit in one run, on one row.
@@ -223,15 +309,15 @@
 		const lines = wrapped(stretch.text.trim(), 38);
 		return (t) => {
 			// The left side shows first and dims as the right one arrives; both are lit at the end.
-			const left = ease(span(t, 0.5, 0.9)) * (1 - 0.55 * (ease(span(t, 1.9, 2.3)) - ease(span(t, 4.6, 5.0))));
-			const right = ease(span(t, 1.9, 2.4));
+			const left = ease(span(t, BEFORE - 0.2, BEFORE + 0.2)) * (1 - 0.55 * (ease(span(t, NOW - 0.2, NOW + 0.2)) - ease(span(t, CARD - 1.6, CARD - 1.2))));
+			const right = ease(span(t, NOW - 0.2, NOW + 0.3));
 			return stage(
 				line('kicker', 150, COPY.newKicker, 'margin:0'),
 				line('big', 204, COPY.named, 'max-width:none;font-size:84px'),
 				badge(LEFT, COPY.beforeBadge, 'background:#e4dfd4;color:#6f6a61', left), badge(RIGHT, COPY.afterBadge, 'background:var(--orange);color:#fff', right),
 				mini(LEFT, COPY.beforeLabel, stretch.bg, left), mini(RIGHT, lines, stretch.bg, right),
 				label(LEFT, COPY.before, 'var(--muted)', left), label(RIGHT, COPY.after, 'var(--ink)', right),
-				line('fine', 860, COPY.trial, `margin:0;max-width:none;font-size:28px;opacity:${ease(span(t, 2.8, 3.3))}`),
+				line('fine', 860, COPY.trial, `margin:0;max-width:none;font-size:28px;opacity:${ease(span(t, NOW + 0.9, NOW + 1.4))}`),
 			);
 		};
 	};
@@ -239,17 +325,16 @@
 	/** When each new word of a stretch that opens from `t0` to `t1` is half open, for the score. */
 	const popsOf = (pair, font, newFont, t0, t1) => planOf(pair, font, newFont).filter((u) => u.kind === 'new').map((u) => lerp(t0, t1, u.start + 0.2));
 
-	// --- the title -----------------------------------------------------------------------------------
-	const TITLE = 2.6;
+	// --- the title that parts the two halves ---------------------------------------------------------
 	const titleCard = (t) => stage(
-		line('kicker', 392, COPY.kicker, `margin:0;opacity:${ease(span(t, 0.1, 0.5))}`),
-		line('big', 440, COPY.title, 'max-width:none;font-size:128px'),
-		line('small', 624, COPY.titleSmall, `margin:0;opacity:${ease(span(t, 0.7, 1.1))}`),
+		line('kicker', 428, COPY.kicker, `margin:0;opacity:${ease(span(t, 0.1, 0.5))}`),
+		line('big', 476, COPY.title, 'max-width:none;font-size:128px'),
 	);
 
 	// --- the end: the tagline is itself a stretch, and a click opens it -----------------------------
 	const TAG = `500 44px/1.3 Inter, sans-serif`;
-	const PX = 16, GROUND = 300, TAG_Y = 520, CLICK = 2.0, TAG_OPEN = [CLICK + 0.1, CLICK + 1.5], LET_GO = CLICK + 1.6;
+	// The click on the tagline, on the card's second bar; Clawd let go three beats later, and its chirp two after that.
+	const PX = 16, GROUND = 300, TAG_Y = 520, CLICK = 4 * BEAT, TAG_OPEN = [CLICK + 0.1, CLICK + 1.5], LET_GO = 7 * BEAT, CHIRP = 9 * BEAT;
 	function endCard(t) {
 		// Clawd is pulled wide as the tagline opens and rings back once it has.
 		const body = pulled(t, { from: CLICK, full: CLICK + 0.4, go: LET_GO, sx: 1.55, sy: 0.86 });
@@ -268,7 +353,9 @@
 	}
 
 	window.CUT = {
-		takes: ['table', 'table-before'],
+		takes: ['plain', 'table', 'table-before'],
+		// music.js lays its bars on this beat.
+		beat: BEAT,
 		scenes(take, takes) {
 			buildDom();
 			for (const each of Object.values(takes)) hideHeader(each);
@@ -276,33 +363,34 @@
 			const shot = (len, from, to, [big, small], rest = {}) => ({ kind: 'take', len, from, to, caption: big, small, zoom: zoomFor(FIRST.s), focus: FIRST.focus, ...rest });
 			// Each growth starts at the first frame that changed after its press (changed, in kit.js).
 			const grown = (mark, len, words, rest = {}) => shot(len, changed(mark.t), changed(mark.t) + len, words, { growth: true, ...rest });
-			const SAID = [COPY.said, COPY.saidSmall], STEADY = [COPY.steady, COPY.steadySmall], BETWEEN = [COPY.between, COPY.betweenSmall];
+			const SAME = [COPY.same, COPY.sameSmall(shortReply(take).words)], CLICKED = [COPY.click, COPY.clickSmall], BETWEEN = [COPY.between, COPY.betweenSmall];
 			const FOLD = [COPY.fold, ''], KNOWS = [COPY.knows, COPY.knowsSmall];
 			// The camera moves in while a phrase opens, and on the second reply. How long each opening and
-			// the closing are held. The take scenes together last 32 beats of the score and the tables 12,
-			// so the clicks on the tables and on the style toolbar land on its beats.
-			const NEAR = zoomFor(1.6), CLOSER = zoomFor(1.45), GROW1 = 3.4, GROW2 = 4.0, SHUT = 2.0;
+			// the closing are held. The take scenes together last eight bars, with the three clicks on
+			// phrases at the start of the second, the fourth and the sixth.
+			const NEAR = zoomFor(1.6), CLOSER = zoomFor(1.45), GROW = 6 * BEAT, SHUT = 4 * BEAT;
 			// The second reply: when its first row shows, and when the line that times it does.
 			const second = take.frames.find((f) => f.t > m.asked2.t && textsOf(f).filter((text) => text.startsWith('⏺')).length > 1).t;
 			const timed = take.frames.find((f) => textsOf(f).filter((text) => / · done /.test(text)).length > 1).t;
 			const stretch = frameAt(m.replied.t + 0.3).rows.flat().find((run) => run.bg && POINT.test(run.text));
 			if (stretch === undefined) throw new Error(`the first reply shows no highlighted phrase that matches ${POINT}`);
 			return [
-				{ kind: 'card', len: TITLE, html: titleCard, cues: { title: [0] } },
-				{ kind: 'card', len: 6.0, html: newCard(stretch), cues: { card: [0] } },
-				shot(2.4, m.replied.t + 0.3, m.open1.t, SAID, { click: m.open1 }),
-				grown(m.open1, GROW1, STEADY, { zoom: NEAR, focus: 22, cues: { grow: [0.1] } }),
-				shot(1.3, changed(m.open1.t) + GROW1, m.open2.t, STEADY, { zoom: NEAR, focus: 23, click: m.open2 }),
-				grown(m.open2, GROW2, BETWEEN, { zoom: NEAR, focus: 24.5, cues: { grow: [0.1] } }),
-				shot(1.2, changed(m.open2.t) + GROW2, m.close.t, BETWEEN, { focus: 23, click: m.close }),
-				grown(m.close, SHUT, FOLD, { focus: 23, cues: { shrink: [0.1] } }),
-				shot(0.9, m.asked2.t + 0.3, second - 0.1, KNOWS, { zoom: CLOSER, focus: 36 }),
-				shot(1.6, second - 0.1, timed - 0.05, KNOWS, { zoom: CLOSER, focus: 37 }),
-				shot(3.2, m.replied2.t - 0.2, m.replied2.t, KNOWS, { zoom: CLOSER, focus: 37 }),
-				tables(takes),
+				intro(takes),
+				shot(4 * BEAT, m.replied.t + 0.3, m.open1.t, SAME, { cutIn: true, click: m.open1, cues: { reply: [0] } }),
+				grown(m.open1, GROW, CLICKED, { zoom: NEAR, focus: 22, cues: { open: [0] } }),
+				shot(2 * BEAT, changed(m.open1.t) + GROW, m.open2.t, CLICKED, { zoom: NEAR, focus: 23, click: m.open2 }),
+				grown(m.open2, GROW, BETWEEN, { zoom: NEAR, focus: 24.5, cues: { open: [0] } }),
+				shot(2 * BEAT, changed(m.open2.t) + GROW, m.close.t, BETWEEN, { focus: 23, click: m.close }),
+				grown(m.close, SHUT, FOLD, { focus: 23, cues: { shut: [0] } }),
+				shot(1.5 * BEAT, m.asked2.t + 0.3, second - 0.1, KNOWS, { zoom: CLOSER, focus: 36 }),
+				shot(2.5 * BEAT, second - 0.1, timed - 0.05, KNOWS, { zoom: CLOSER, focus: 37 }),
+				shot(4 * BEAT, m.replied2.t - 0.2, m.replied2.t, KNOWS, { zoom: CLOSER, focus: 37 }),
 				styles(take),
-				{ kind: 'card', len: 7.2, html: endCard, clicks: [{ at: CLICK, x: W / 2, y: TAG_Y + 30 }], boings: [LET_GO],
-					cues: { end: [0], pops: popsOf(COPY.tagline, TAG, TAG, ...TAG_OPEN), chirp: [5.0] } },
+				{ kind: 'card', len: 4 * BEAT, html: titleCard, cues: { title: [0] } },
+				{ kind: 'card', len: CARD, html: newCard(stretch), cues: { card: [0], label: [BEFORE], point: [NOW] } },
+				tables(takes),
+				{ kind: 'card', len: 12 * BEAT, html: endCard, clicks: [{ at: CLICK, x: W / 2, y: TAG_Y + 30 }], boings: [LET_GO],
+					cues: { end: [0], tagline: [CLICK], pops: popsOf(COPY.tagline, TAG, TAG, ...TAG_OPEN), chirp: [CHIRP] } },
 			];
 		},
 	};

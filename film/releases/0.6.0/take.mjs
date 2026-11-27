@@ -1,14 +1,16 @@
-// Records the takes of the 0.6.0 film, each a real session. `main` asks what cc-stretch is, told what
-// the README and the LICENSE say: it opens the style toolbar and picks the tinted highlight with no
-// marks, asks, opens two stretches of the reply, closes the first, asks which parts were skipped, and
-// then tries other styles on the toolbar, back to the one it began with. Nothing is saved, so no
-// setting changes. `table` and `table-before` ask for one stretch whose long form holds a table and
+// Records the takes of the 0.6.0 film, each a real session. `plain` and `main` ask what cc-stretch
+// is under the same added instructions, which tell them what the README and the LICENSE say. `plain`
+// runs without the plugin, in a pane tall enough to hold the whole reply, so the film can show all of
+// it at once. `main` runs with the plugin: it opens the style toolbar and picks the tinted highlight
+// with no marks, asks, opens two stretches of the reply, closes the first, asks which parts were
+// skipped, and then tries other styles on the toolbar, back to the one it began with. Nothing is
+// saved, so no setting changes. `table` and `table-before` ask for one stretch whose long form holds a table and
 // open it: the first with this repo's plugin, the second with release 0.5.6, which wrote a table as
 // typed. For that one, put the release's plugin where BEFORE names:
 //   mkdir -p film/out/releases/0.6.0/plugin-0.5.6
 //   git archive v0.5.6 .claude-plugin commands hooks types | tar -x -C film/out/releases/0.6.0/plugin-0.5.6
-// Writes out/releases/0.6.0/take, take-table and take-table-before.
-//   node film/releases/0.6.0/take.mjs          all three, one after the other
+// Writes out/releases/0.6.0/take-plain, take, take-table and take-table-before.
+//   node film/releases/0.6.0/take.mjs          all four, one after the other
 //   node film/releases/0.6.0/take.mjs table    one of them
 import { REPO, sleep, startTake } from '../../recorder.mjs';
 
@@ -48,6 +50,19 @@ async function table(out, plugin) {
 		await take.settle(1500, 15000);
 		await sleep(2000);
 		if (tableRows() === 0) throw new Error(`the opened stretch shows no table:\n${take.text()}`);
+		take.mark('end');
+	} finally {
+		await take.finish();
+	}
+}
+
+async function plain() {
+	// 150 rows: at 80 columns a reply of about 1,000 words still fits on one screen.
+	const take = await startTake({ out: `${OUT}/take-plain`, append: APPEND, cols: 80, rows: 150, plugin: null });
+	try {
+		await take.ready();
+		await take.ask(QUESTION);
+		await sleep(1500);
 		take.mark('end');
 	} finally {
 		await take.finish();
@@ -149,7 +164,8 @@ async function main() {
 }
 
 const only = process.argv[2];
-if (only !== undefined && !['main', 'table', 'table-before'].includes(only)) throw new Error('usage: take.mjs [main|table|table-before]');
+if (only !== undefined && !['plain', 'main', 'table', 'table-before'].includes(only)) throw new Error('usage: take.mjs [plain|main|table|table-before]');
+if (only === undefined || only === 'plain') await plain();
 if (only === undefined || only === 'main') await main();
 if (only === undefined || only === 'table') await table(`${OUT}/take-table`, REPO);
 if (only === undefined || only === 'table-before') await table(`${OUT}/take-table-before`, BEFORE);
